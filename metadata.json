@@ -1,0 +1,11 @@
+{
+  "name": "NEXA",
+  "description": "A cinematic AI-powered creator ecosystem where social media, portfolios, collaboration, and digital ownership merge into one premium futuristic platform.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
