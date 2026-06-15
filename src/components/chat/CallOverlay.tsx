@@ -73,13 +73,13 @@ export function CallOverlay() {
     if (localVideoRef.current && currentCall.localStream) {
       localVideoRef.current.srcObject = currentCall.localStream;
     }
-  }, [currentCall.localStream, isMinimized]);
+  }, [currentCall.localStream, isMinimized, currentCall.status]);
 
   useEffect(() => {
     if (remoteVideoRef.current && currentCall.remoteStream) {
       remoteVideoRef.current.srcObject = currentCall.remoteStream;
     }
-  }, [currentCall.remoteStream, isMinimized]);
+  }, [currentCall.remoteStream, isMinimized, currentCall.status]);
 
   if (currentCall.status === "idle") return null;
 

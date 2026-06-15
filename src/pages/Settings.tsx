@@ -324,16 +324,39 @@ export function Settings() {
                   </div>
                 </div>
 
-                <div className="pt-8">
+                <div className="pt-8 space-y-4">
                   <button 
                      onClick={async () => {
                        const { supabase } = await import("../lib/supabase");
                        await supabase.auth.signOut();
                        useAppStore.getState().setCurrentUser(null);
                      }}
-                     className="w-full flex justify-center py-4 rounded-2xl bg-rose-500/10 text-rose-500 font-bold hover:bg-rose-500/20 transition-colors border border-rose-500/20 uppercase tracking-widest font-mono text-xs"
+                     className="w-full flex justify-center py-4 rounded-2xl bg-white/5 text-white/70 font-bold hover:bg-white/10 hover:text-white transition-colors border border-white/10 uppercase tracking-widest font-mono text-xs"
                   >
                     Log Out
+                  </button>
+
+                  <button 
+                     onClick={async () => {
+                        const confirmed = window.confirm("Are you entirely sure you want to permanently delete your account?");
+                        if (!confirmed) return;
+                        
+                        // We use Edge Functions or rpc to delete the auth user normally,
+                        // but calling the supabase API endpoint if allowed, or we just call signout and mark deleted
+                        // Since we may not have an admin RPC setup to delete auth.users, we can delete their profile
+                        // and sign them out.
+                        const { supabase } = await import("../lib/supabase");
+                        const userId = useAppStore.getState().currentUser?.id;
+                        if (userId) {
+                           await supabase.from("profiles").delete().eq('id', userId);
+                           alert("Account Data Deleted");
+                           await supabase.auth.signOut();
+                           useAppStore.getState().setCurrentUser(null);
+                        }
+                     }}
+                     className="w-full flex justify-center py-4 rounded-2xl bg-rose-500/10 text-rose-500 font-bold hover:bg-rose-500/20 transition-colors border border-rose-500/20 uppercase tracking-widest font-mono text-xs mt-4"
+                  >
+                    Delete Account
                   </button>
                 </div>
               </div>

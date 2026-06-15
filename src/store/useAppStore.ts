@@ -51,6 +51,9 @@ export interface Post {
   content: string;
   image?: string;
   mediaType?: "image" | "video";
+  musicTitle?: string;
+  musicArtist?: string;
+  musicUrl?: string;
   originalPostId?: string;
   likes: number;
   comments: number;
@@ -75,6 +78,27 @@ export interface Reel {
   music: string;
   likes: number;
   comments: number;
+  createdAt: string;
+}
+
+export interface Story {
+  id: string;
+  userId: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
+  caption?: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface Note {
+  id: string;
+  userId: string;
+  content: string;
+  musicTitle?: string;
+  musicUrl?: string;
+  gifUrl?: string;
+  expiresAt: string;
   createdAt: string;
 }
 
@@ -113,6 +137,8 @@ interface AppState {
   comments: Record<string, Comment[]>;
   notifications: Notification[];
   friendRequests: FriendRequest[];
+  stories: Story[];
+  notes: Note[];
 
   likedPosts: Record<string, boolean>;
   savedPosts: Record<string, boolean>;
@@ -135,6 +161,15 @@ interface AppState {
   removeFriend: (targetId: string) => Promise<void>;
   fetchFriendRequests: () => Promise<void>;
   initializeSession: (userId: string) => Promise<void>;
+
+  fetchStories: () => Promise<void>;
+  addStory: (story: Omit<Story, "id" | "createdAt">) => Promise<void>;
+  deleteStory: (storyId: string) => Promise<void>;
+  viewStory: (storyId: string) => Promise<void>;
+
+  fetchNotes: () => Promise<void>;
+  addNote: (note: Omit<Note, "id" | "createdAt">) => Promise<void>;
+  deleteNote: (noteId: string) => Promise<void>;
 
   hasMorePosts: boolean;
   hasMoreReels: boolean;
@@ -178,6 +213,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   hasMoreReels: true,
   comments: {},
   notifications: [],
+  friendRequests: [],
+  stories: [],
+  notes: [],
 
   likedPosts: {},
   savedPosts: {},
@@ -370,12 +408,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (missingUserIds.length > 0) {
         await get().fetchProfiles(missingUserIds);
       }
+      
+      // Fetch async non-blocking
+      get().fetchNotifications();
+      get().fetchStories();
+      get().fetchNotes();
+      import("./communicationStore").then(m => m.useCommunicationStore.getState().fetchOnlineUsers());
+      
     } catch (e) {
       console.error("Failed to initialize session details", e);
     }
   },
-
-  friendRequests: [],
 
   fetchFriendRequests: async () => {
     const state = get();
@@ -561,6 +604,120 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ likedPosts, savedPosts, repostedPosts, likedReels, savedReels, repostedReels, following });
   },
 
+  fetchStories: async () => {
+    const { data } = await supabase
+      .from("stories")
+      .select("*")
+      .gt('expires_at', new Date().toISOString())
+      .order("created_at", { ascending: false });
+    if (data) {
+      const mapped = data.map((s: any) => ({
+        id: s.id,
+        userId: s.user_id,
+        mediaUrl: s.media_url,
+        mediaType: s.media_type,
+        caption: s.caption,
+        expiresAt: s.expires_at,
+        createdAt: s.created_at,
+      }));
+      set({ stories: mapped });
+      get().fetchProfiles(mapped.map((s) => s.userId));
+    }
+  },
+
+  addStory: async (story) => {
+    const state = get();
+    if (!state.currentUser) return;
+    const { data, error } = await supabase.from("stories").insert({
+      user_id: state.currentUser.id,
+      media_url: story.mediaUrl,
+      media_type: story.mediaType,
+      caption: story.caption,
+      expires_at: story.expiresAt,
+    }).select().single();
+    
+    if (data) {
+      const newStory: Story = {
+        id: data.id,
+        userId: data.user_id,
+        mediaUrl: data.media_url,
+        mediaType: data.media_type,
+        caption: data.caption,
+        expiresAt: data.expires_at,
+        createdAt: data.created_at,
+      };
+      set(s => ({ stories: [newStory, ...s.stories] }));
+    }
+  },
+
+  deleteStory: async (storyId) => {
+    const state = get();
+    if (!state.currentUser) return;
+    await supabase.from("stories").delete().eq("id", storyId).eq("user_id", state.currentUser.id);
+    set(s => ({ stories: s.stories.filter(story => story.id !== storyId) }));
+  },
+
+  viewStory: async (storyId) => {
+    const state = get();
+    if (!state.currentUser) return;
+    await supabase.from("story_views").insert({ story_id: storyId, viewer_id: state.currentUser.id });
+  },
+
+  fetchNotes: async () => {
+    const { data } = await supabase
+      .from("notes")
+      .select("*")
+      .gt('expires_at', new Date().toISOString())
+      .order("created_at", { ascending: false });
+    if (data) {
+      const mapped = data.map((n: any) => ({
+        id: n.id,
+        userId: n.user_id,
+        content: n.content,
+        musicTitle: n.music_title,
+        musicUrl: n.music_url,
+        gifUrl: n.gif_url,
+        expiresAt: n.expires_at,
+        createdAt: n.created_at,
+      }));
+      set({ notes: mapped });
+      get().fetchProfiles(mapped.map((n) => n.userId));
+    }
+  },
+
+  addNote: async (note) => {
+    const state = get();
+    if (!state.currentUser) return;
+    const { data } = await supabase.from("notes").insert({
+      user_id: state.currentUser.id,
+      content: note.content,
+      music_title: note.musicTitle,
+      music_url: note.musicUrl,
+      gif_url: note.gifUrl,
+      expires_at: note.expiresAt,
+    }).select().single();
+    if(data) {
+      const newNote: Note = {
+        id: data.id,
+        userId: data.user_id,
+        content: data.content,
+        musicTitle: data.music_title,
+        musicUrl: data.music_url,
+        gifUrl: data.gif_url,
+        expiresAt: data.expires_at,
+        createdAt: data.created_at,
+      };
+      set(s => ({ notes: [newNote, ...s.notes] }));
+    }
+  },
+
+  deleteNote: async (noteId) => {
+    const state = get();
+    if (!state.currentUser) return;
+    await supabase.from("notes").delete().eq("id", noteId).eq("user_id", state.currentUser.id);
+    set(s => ({ notes: s.notes.filter(note => note.id !== noteId) }));
+  },
+
   fetchPosts: async (cursor = 0) => {
     console.log("FETCH POSTS CALLED:", cursor);
     const limit = 20;
@@ -582,6 +739,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: p.caption,
         image: p.media_url,
         mediaType: p.media_type,
+        musicTitle: p.music_title,
+        musicArtist: p.music_artist,
+        musicUrl: p.music_url,
         originalPostId: p.original_post_id || undefined,
         likes: p.likes || 0,
         comments: p.comments || 0,
@@ -628,6 +788,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         caption: post.content,
         media_url: post.image,
         media_type: post.mediaType,
+        music_title: post.musicTitle,
+        music_artist: post.musicArtist,
+        music_url: post.musicUrl,
         original_post_id: (post as any).originalPostId,
       })
       .select()
@@ -645,6 +808,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: data.caption || "",
         image: data.media_url,
         mediaType: data.media_type,
+        musicTitle: data.music_title,
+        musicArtist: data.music_artist,
+        musicUrl: data.music_url,
         originalPostId: data.original_post_id,
         likes: 0,
         comments: 0,

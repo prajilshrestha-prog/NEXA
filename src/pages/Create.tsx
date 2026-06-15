@@ -9,11 +9,13 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useAppStore } from "../store/useAppStore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { uploadMedia } from "../lib/upload";
 
 export function Create() {
-  const [postType, setPostType] = useState<"post" | "reel">("post");
+  const [searchParams] = useSearchParams();
+  const initialType = (searchParams.get("type") as "post" | "reel" | "story") || "post";
+  const [postType, setPostType] = useState<"post" | "reel" | "story">(initialType);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [image, setImage] = useState("");
@@ -23,6 +25,7 @@ export function Create() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const addPost = useAppStore((state) => state.addPost) || (async () => {});
   const addReel = useAppStore((state) => state.addReel) || (async () => {});
+  const addStory = useAppStore((state) => state.addStory) || (async () => {});
   const currentUser = useAppStore((state) => state.currentUser);
   const navigate = useNavigate();
 
@@ -31,6 +34,11 @@ export function Create() {
     
     if (postType === "reel" && mediaType !== "video") {
       alert("Reels must include a video.");
+      return;
+    }
+    
+    if (postType === "story" && !imageFile) {
+      alert("Stories must include an image or video.");
       return;
     }
 
@@ -64,7 +72,7 @@ export function Create() {
         };
         console.log("POST INSERT", postData);
         await addPost(postData);
-      } else {
+      } else if (postType === "reel") {
         const reelData = {
           userId: currentUser.id,
           caption: `${title ? `**${title}**\n` : ""}${content}`,
@@ -73,6 +81,15 @@ export function Create() {
         };
         console.log("REEL INSERT", reelData);
         await addReel(reelData);
+      } else if (postType === "story") {
+        const storyData = {
+          userId: currentUser.id,
+          mediaUrl: finalImageUrl,
+          mediaType: mediaType || "image",
+          caption: title || content || undefined,
+        };
+        console.log("STORY INSERT", storyData);
+        await addStory(storyData as any);
       }
 
       if (image.startsWith("blob:")) {
@@ -101,14 +118,14 @@ export function Create() {
         </header>
         
         {/* Type Selector */}
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center gap-4 flex-wrap">
           <button
             onClick={() => setPostType("post")}
             className={`px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs transition-colors ${
               postType === "post" ? "bg-white text-black" : "bg-white/5 text-white/50 hover:bg-white/10"
             }`}
           >
-            Create Post
+            Post
           </button>
           <button
             onClick={() => setPostType("reel")}
@@ -116,7 +133,15 @@ export function Create() {
               postType === "reel" ? "bg-white text-black" : "bg-white/5 text-white/50 hover:bg-white/10"
             }`}
           >
-            Create Reel
+            Reel
+          </button>
+          <button
+            onClick={() => setPostType("story")}
+            className={`px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs transition-colors ${
+              postType === "story" ? "bg-white text-black" : "bg-white/5 text-white/50 hover:bg-white/10"
+            }`}
+          >
+            Story
           </button>
         </div>
 

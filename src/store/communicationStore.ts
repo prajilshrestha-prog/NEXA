@@ -78,6 +78,7 @@ interface CommunicationState {
   ) => void;
 
   setOnlineUsers: (users: string[]) => void;
+  fetchOnlineUsers: () => Promise<void>;
 
   // Call actions
   startCall: (partnerId: string, type: "audio" | "video") => Promise<void>;
@@ -495,6 +496,18 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
 
   setOnlineUsers: (users: string[]) => set({ onlineUsers: users }),
 
+  fetchOnlineUsers: async () => {
+    const { data } = await supabase
+      .from("user_presence")
+      .select("user_id")
+      .eq("status", "online")
+      .gte("last_seen", new Date(Date.now() - 5 * 60000).toISOString()); // 5 mins threshold
+      
+    if (data) {
+      set({ onlineUsers: data.map((d) => d.user_id) });
+    }
+  },
+
   // WebRTC Call Flow
   startCall: async (partnerId: string, type: "audio" | "video") => {
     console.log("INITIATE CALL", partnerId, type);
@@ -688,9 +701,10 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     }
   },
 
-  handleCallEnded: (sessionId: string) => {
+  handleCallEnded: (sessionId: string | null) => {
     const { currentCall } = get();
-    if (currentCall.sessionId === sessionId) {
+    if (!currentCall.sessionId) return;
+    if (!sessionId || currentCall.sessionId === sessionId) {
       get().endCall();
     }
   },

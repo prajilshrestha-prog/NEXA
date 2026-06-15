@@ -214,6 +214,48 @@ export function Messages() {
             )}
           </div>
         </div>
+        
+        {/* Notes Bar */}
+        <div className="border-b border-white/5 py-4 overflow-x-auto scrollbar-hide">
+           <div className="flex gap-4 px-4">
+              <div 
+                 className="relative shrink-0 flex flex-col items-center gap-1 cursor-pointer"
+                 onClick={() => {
+                    const text = window.prompt("Share a thought (Note):");
+                    if (text) {
+                       useAppStore.getState().addNote({
+                          content: text,
+                          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                          userId: currentUser.id
+                       });
+                    }
+                 }}
+              >
+                  <div className="relative">
+                     <img src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.id}`} className="w-14 h-14 rounded-full object-cover border border-white/20" />
+                     <div className="absolute -top-3 -right-2 bg-indigo-500 text-white rounded-xl px-2 py-1 flex items-center justify-center text-[10px] font-bold shadow-lg shadow-black/50 border border-white/20">
+                        <Plus size={10} className="mr-0.5" /> Note
+                     </div>
+                  </div>
+                  <span className="text-[10px] text-white/50 font-medium">Your Note</span>
+              </div>
+              
+              {useAppStore.getState().notes?.map(note => {
+                 const author = users[note.userId];
+                 return (
+                    <div key={note.id} className="relative shrink-0 flex flex-col items-center gap-1 cursor-pointer group">
+                       <div className="relative">
+                          <img src={author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${note.userId}`} className="w-14 h-14 rounded-full object-cover border border-white/20" />
+                          <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md text-white rounded-xl px-3 py-2 flex items-center justify-center text-xs shadow-lg shadow-black/50 border border-white/20 whitespace-normal max-w-[100px] text-center line-clamp-2 leading-tight z-10 w-max">
+                             {note.content}
+                          </div>
+                       </div>
+                       <span className="text-[10px] text-white/90 font-medium">{author?.username || 'user'}</span>
+                    </div>
+                 );
+              })}
+           </div>
+        </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-hide py-2 relative">
           {searchQuery ? (

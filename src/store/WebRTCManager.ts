@@ -36,6 +36,7 @@ class WebRTCManager {
         type: "offer_request",
         sessionId,
         callType: type,
+        ts: Date.now()
       });
     } catch (e: any) {
       console.error("Failed to acquire media", e);
@@ -56,7 +57,7 @@ class WebRTCManager {
       });
       useCommunicationStore.getState().setLocalStream(stream);
 
-      this.sendSignal(partnerId, { type: "accept", sessionId });
+      this.sendSignal(partnerId, { type: "accept", sessionId, ts: Date.now() });
       // Also the peer who initiated will start the peer connection (createOffer)
     } catch (e) {
       console.error("Failed to acquire media on accept", e);
@@ -86,7 +87,19 @@ class WebRTCManager {
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      useCommunicationStore.getState().setRemoteStream(event.streams[0]);
+      const state = useCommunicationStore.getState();
+      const currentRemoteStream = state.currentCall.remoteStream;
+      
+      if (currentRemoteStream) {
+         event.streams[0].getTracks().forEach(track => {
+            if (!currentRemoteStream.getTracks().find(t => t.id === track.id)) {
+               currentRemoteStream.addTrack(track);
+            }
+         });
+         state.setRemoteStream(currentRemoteStream); // trigger re-render
+      } else {
+         state.setRemoteStream(event.streams[0]);
+      }
     };
 
     // Handle ICE candidates
@@ -245,7 +258,7 @@ class WebRTCManager {
       delete this.peerConnections[partnerId];
     }
     if (partnerId) {
-      this.sendSignal(partnerId, { type: "end" });
+      this.sendSignal(partnerId, { type: "end", sessionId: useCommunicationStore.getState().currentCall.sessionId, ts: Date.now() });
     }
     // Stop all intervals
     for (const t in this.iceCandidateIntervals) {

@@ -3,11 +3,26 @@ import { useAppStore } from "./useAppStore";
 
 class RealtimeManager {
   private mainChannel: ReturnType<typeof supabase.channel> | null = null;
+  private unloadHandlerAdded = false;
 
   initGlobalSubscriptions() {
     if (this.mainChannel) return;
 
     const userId = useAppStore.getState().currentUser?.id;
+
+    if (userId && !this.unloadHandlerAdded) {
+       this.unloadHandlerAdded = true;
+       window.addEventListener("beforeunload", () => {
+          // Fire and forget beacon or simple beacon fetch isn't perfectly reliable, 
+          // but we can try to use navigator.sendBeacon ideally. Since we can't easily construct a JWT for standard REST edge
+          // we'll just fire an async upsert block.
+          supabase.from("user_presence").upsert({
+            user_id: userId,
+            status: "offline",
+            last_seen: new Date().toISOString()
+          }).then();
+       });
+    }
 
     // Consolidate everything into a single channel to prevent Websocket resource limits & transport failures
     this.mainChannel = supabase.channel("nexa_main_v2", {
@@ -69,6 +84,12 @@ class RealtimeManager {
           await this.mainChannel?.track({
             online_at: new Date().toISOString(),
           });
+          
+          await supabase.from("user_presence").upsert({
+            user_id: userId,
+            status: "online",
+            last_seen: new Date().toISOString()
+          });
         }
       }
       if (status === "CHANNEL_ERROR") {
@@ -120,6 +141,9 @@ class RealtimeManager {
               content: newRec.content,
               image: newRec.image,
               mediaType: newRec.media_type,
+              musicTitle: newRec.music_title,
+              musicArtist: newRec.music_artist,
+              musicUrl: newRec.music_url,
               originalPostId: newRec.original_post_id,
               likes: newRec.likes || 0,
               comments: newRec.comments || 0,
@@ -348,6 +372,66 @@ class RealtimeManager {
           });
         }
         break;
+      }
+      case "stories": {
+        if (event === "INSERT") {
+          state.fetchProfiles([newRec.user_id]).then(() => {
+            const s = {
+              id: newRec.id,
+              userId: newRec.user_id,
+              mediaUrl: newRec.media_url,
+              mediaType: newRec.media_type,
+              caption: newRec.caption,
+              expiresAt: newRec.expires_at,
+              createdAt: newRec.created_at,
+            };
+            useAppStore.setState((st) => {
+              if (st.stories.find((x) => x.id === s.id)) return st;
+              return { stories: [s, ...st.stories] };
+            });
+          });
+        }
+        break;
+      }
+      
+      case "notes": {
+        if (event === "INSERT") {
+          state.fetchProfiles([newRec.user_id]).then(() => {
+            const n = {
+              id: newRec.id,
+              userId: newRec.user_id,
+              content: newRec.content,
+              musicTitle: newRec.music_title,
+              musicUrl: newRec.music_url,
+              gifUrl: newRec.gif_url,
+              expiresAt: newRec.expires_at,
+              createdAt: newRec.created_at,
+            };
+            useAppStore.setState((st) => {
+              if (st.notes.find((x) => x.id === n.id)) return st;
+              return { notes: [n, ...st.notes] };
+            });
+          });
+        }
+        break;
+      }
+      
+      case "user_presence": {
+         import("./communicationStore").then((m) => {
+           const state = m.useCommunicationStore.getState();
+           const currentOnline = state.onlineUsers;
+           
+           if (newRec.status === "online" && new Date(newRec.last_seen).getTime() > Date.now() - 5 * 60000) {
+              if (!currentOnline.includes(newRec.user_id)) {
+                 state.setOnlineUsers([...currentOnline, newRec.user_id]);
+              }
+           } else {
+              if (currentOnline.includes(newRec.user_id)) {
+                 state.setOnlineUsers(currentOnline.filter(id => id !== newRec.user_id));
+              }
+           }
+         });
+         break;
       }
       case "call_sessions": {
         // Handled via webrtc_signals

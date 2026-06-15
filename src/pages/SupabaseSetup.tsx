@@ -215,7 +215,51 @@ create table public.webrtc_signals (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- 7. Create Notifications Table
+-- 7. Create Extra Tables
+create table public.stories (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  media_url text not null,
+  media_type text not null, -- 'image' or 'video'
+  caption text,
+  expires_at timestamp with time zone not null,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+create table public.story_views (
+  id uuid default gen_random_uuid() primary key,
+  story_id uuid references public.stories(id) on delete cascade not null,
+  viewer_id uuid references public.profiles(id) on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  unique(story_id, viewer_id)
+);
+
+create table public.story_reactions (
+  id uuid default gen_random_uuid() primary key,
+  story_id uuid references public.stories(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  reaction text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+create table public.notes (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  content text not null,
+  music_title text,
+  music_url text,
+  gif_url text,
+  expires_at timestamp with time zone not null,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+create table public.user_presence (
+  user_id uuid references public.profiles(id) on delete cascade primary key,
+  status text not null default 'offline',
+  last_seen timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- 7.5 Create Notifications Table
 create table public.notifications (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
@@ -247,6 +291,12 @@ alter table public.typing_status enable row level security;
 alter table public.call_sessions enable row level security;
 alter table public.webrtc_signals enable row level security;
 alter table public.notifications enable row level security;
+
+alter table public.stories enable row level security;
+alter table public.story_views enable row level security;
+alter table public.story_reactions enable row level security;
+alter table public.notes enable row level security;
+alter table public.user_presence enable row level security;
 
 -- 9. Create basic RLS Policies (for simplicity in development, we allow all for authenticated users)
 create policy "Public conversations are viewable by everyone." on conversations for select using (true);
@@ -308,6 +358,25 @@ create policy "Users can manage their friend requests" on friend_requests for al
 create policy "Users can view their notifications" on notifications for select using (auth.uid() = user_id);
 create policy "System can insert notifications" on notifications for insert with check (auth.role() = 'authenticated');
 
+create policy "Stories viewable by everyone" on stories for select using (true);
+create policy "Authenticated users can insert stories" on stories for insert with check (auth.role() = 'authenticated');
+create policy "Users can delete own stories" on stories for delete using (auth.uid() = user_id);
+
+create policy "Story views are viewable by everyone" on story_views for select using (true);
+create policy "Users can insert story views" on story_views for insert with check (auth.uid() = viewer_id);
+
+create policy "Story reactions are viewable by everyone" on story_reactions for select using (true);
+create policy "Users can insert story reactions" on story_reactions for insert with check (auth.uid() = user_id);
+
+create policy "Notes viewable by everyone" on notes for select using (true);
+create policy "Authenticated users can insert notes" on notes for insert with check (auth.role() = 'authenticated');
+create policy "Users can update own notes" on notes for update using (auth.uid() = user_id);
+create policy "Users can delete own notes" on notes for delete using (auth.uid() = user_id);
+
+create policy "User presence viewable by everyone" on user_presence for select using (true);
+create policy "Users can insert own presence" on user_presence for insert with check (auth.uid() = user_id);
+create policy "Users can update own presence" on user_presence for update using (auth.uid() = user_id);
+
 -- 10. Setup Storage Buckets
 insert into storage.buckets (id, name, public) values ('media', 'media', true);
 insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true);
@@ -331,7 +400,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 // 11. Enable realtime for critical tables
-alter publication supabase_realtime add table posts, comments, reels, profiles, likes, follows, friend_requests, notifications, conversations, conversation_participants, messages, typing_status, call_sessions, webrtc_signals;
+alter publication supabase_realtime add table posts, comments, reels, profiles, likes, follows, friend_requests, notifications, conversations, conversation_participants, messages, typing_status, call_sessions, webrtc_signals, stories, story_views, story_reactions, notes, user_presence;
 `;
 
 export function SupabaseSetup() {

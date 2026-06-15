@@ -39,6 +39,9 @@ const Reels = lazy(() =>
 const Settings = lazy(() =>
   import("./pages/Settings").then((m) => ({ default: m.Settings })),
 );
+const StoryViewer = lazy(() =>
+  import("./pages/StoryViewer").then((m) => ({ default: m.StoryViewer })),
+);
 
 const Portfolio = lazy(() =>
   import("./pages/Portfolio").then((m) => ({ default: m.Portfolio })),
@@ -189,6 +192,7 @@ export default function App() {
                   <Route path="/creator-hub" element={<CreatorHub />} />
                   <Route path="/opportunities" element={<Opportunities />} />
                   <Route path="/reels" element={<Reels />} />
+                  <Route path="/story/:id" element={<StoryViewer />} />
                   <Route path="/messages" element={<Messages />} />
                   <Route path="/messages/:id" element={<Messages />} />
                   <Route path="/settings" element={<Settings />} />

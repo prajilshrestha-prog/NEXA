@@ -41,6 +41,13 @@ export function Auth() {
     setError("");
 
     try {
+      if (!email.trim()) {
+        throw new Error(isLogin ? "Login failed: Email is required" : "Signup failed: Email is required");
+      }
+      if (password.length < 6) {
+        throw new Error(isLogin ? "Login failed: Password must be at least 6 characters" : "Signup failed: Password must be at least 6 characters");
+      }
+
       if (isLogin) {
         // 🔐 LOGIN
         const { data, error: signInError } =
@@ -49,9 +56,12 @@ export function Auth() {
             password,
           });
 
-        if (signInError) throw signInError;
+        if (signInError) {
+          console.error("Login Supabase Error:", signInError);
+          throw new Error(`Login failed: ${signInError.message}`);
+        }
 
-        if (!data.user) throw new Error("No user returned");
+        if (!data.user) throw new Error("Login failed: No user returned");
 
         // 👤 GET PROFILE
         const { data: fetchedProfile, error: profileError } = await supabase
@@ -90,26 +100,40 @@ export function Auth() {
         }
 
         if (profile) {
+          const sessionData = await supabase.auth.getSession();
+          console.log("Current session:", sessionData);
           setCurrentUser(profile);
           navigate("/"); // 🚀 FIXED: redirect to Home
         } else {
-          throw new Error("Profile could not be verified");
+          throw new Error("Login failed: Profile could not be verified");
         }
       } else {
         // 🆕 SIGN UP
+        if (!username.trim()) {
+            throw new Error("Signup failed: Username is required");
+        }
+        
+        const safeName = name.trim() || username.trim();
+
         const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
           options: {
-            data: { name, username },
+            data: { name: safeName, username: username.trim() },
           },
         });
 
-        if (signUpError) throw signUpError;
+        if (signUpError) {
+          console.error("Signup Supabase Error:", signUpError);
+          if (signUpError.message.includes("Database error saving new user")) {
+             throw new Error(`Signup failed: Username "${username}" might already be correctly registered, or metadata validation failed.`);
+          }
+          throw new Error(`Signup failed: ${signUpError.message}`);
+        }
 
         const user = data.user;
 
-        if (!user) throw new Error("No user created");
+        if (!user) throw new Error("Signup failed: No user created");
 
         // ⏳ wait for profile trigger (safe fallback)
         let profile = null;
@@ -140,8 +164,8 @@ export function Auth() {
             .from("profiles")
             .insert({
               id: user.id,
-              username: username,
-              name: name,
+              username: username.trim(),
+              name: safeName,
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
               banner: "",
               bio: "",
@@ -150,15 +174,20 @@ export function Auth() {
             .select("*")
             .maybeSingle();
 
-          if (manualError) throw manualError;
+          if (manualError) {
+            console.error("Manual profile creation error:", manualError);
+            throw new Error(`Signup failed: Could not create profile. ${manualError.message}`);
+          }
           profile = manualProfile;
         }
 
         if (profile) {
+          const sessionData = await supabase.auth.getSession();
+          console.log("Current session after signup:", sessionData);
           setCurrentUser(profile);
           navigate("/"); // 🚀 FIXED NAVIGATION
         } else {
-          throw new Error("Profile could not be created");
+          throw new Error("Signup failed: Profile could not be created");
         }
       }
     } catch (err: any) {

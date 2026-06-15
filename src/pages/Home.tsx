@@ -18,13 +18,14 @@ import {
   Film,
   FolderPlus,
   Edit3
-, Image as ImageIcon, Video, Music, BarChart2, MapPin } from "lucide-react";
+, Image as ImageIcon, Video, Music, BarChart2, MapPin, X } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAppStore } from "../store/useAppStore";
 import { format } from "date-fns";
 import { Link, useNavigate } from "react-router-dom";
 
 import { shareContent } from "../lib/share";
+import { supabase } from "../lib/supabase";
 
 const PostCard = ({ post }: { post: any }) => {
   const users = useAppStore((state) => state.users) || {};
@@ -215,18 +216,32 @@ const PostCard = ({ post }: { post: any }) => {
       {/* Post Image/Video (if any) */}
       {postToRender.image && (
         <div
-          className="mt-2 ml-15 relative md:aspect-[21/9] rounded-2xl overflow-hidden bg-black/50 border border-white/10 cursor-pointer group z-10 w-full"
-          style={{ maxHeight: "600px" }}
+          onClick={() => {
+             const v = document.getElementById("fullscreen-viewer") as any;
+             const img = document.getElementById("fullscreen-img") as HTMLImageElement;
+             const vid = document.getElementById("fullscreen-vid") as HTMLVideoElement;
+             v.classList.remove("hidden");
+             v.classList.add("flex");
+             if (postToRender.mediaType === "video") {
+                vid.src = postToRender.image;
+                vid.classList.remove("hidden");
+                img.classList.add("hidden");
+             } else {
+                img.src = postToRender.image;
+                img.classList.remove("hidden");
+                vid.classList.add("hidden");
+             }
+          }}
+          className="mt-2 ml-15 relative rounded-2xl overflow-hidden bg-black/50 border border-white/10 cursor-pointer group z-10 w-full flex items-center justify-center"
+          style={{ maxHeight: "800px" }}
         >
           {postToRender.mediaType === "video" ? (
             <video
               src={postToRender.image}
-              preload="none"
-              autoPlay
-              loop
-              muted
+              preload="metadata"
+              controls
               playsInline
-              className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-80 mix-blend-screen"
+              className="max-w-full max-h-[800px] object-contain transition-transform duration-1000 group-hover:scale-105"
             />
           ) : (
             <img
@@ -234,9 +249,24 @@ const PostCard = ({ post }: { post: any }) => {
               alt="Post"
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-80 mix-blend-screen"
+              className="max-w-full max-h-[800px] object-contain transition-transform duration-1000 group-hover:scale-105"
             />
           )}
+        </div>
+      )}
+
+      {/* Music Card */}
+      {postToRender.musicUrl && (
+        <div className="mt-4 ml-15 bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-3 relative z-10 max-w-sm hover:bg-white/10 transition-colors">
+           <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center relative overflow-hidden shrink-0">
+             <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/40 to-fuchsia-500/40 animate-pulse"></div>
+             <Music size={18} className="text-indigo-400 relative z-10" />
+           </div>
+           <div className="flex-1 min-w-0 pr-4">
+             <div className="text-white text-sm font-bold truncate">{(postToRender as any).musicTitle || "Unknown Track"}</div>
+             <div className="text-white/50 text-[10px] font-mono truncate">{(postToRender as any).musicArtist || "Unknown Artist"}</div>
+           </div>
+           <audio controls src={postToRender.musicUrl} className="w-full absolute inset-0 opacity-0 cursor-pointer z-20" />
         </div>
       )}
 
@@ -473,17 +503,32 @@ export function Home() {
         {/* Main Feed */}
         <div className="lg:col-span-8 flex flex-col gap-6">
 
-          {/* Stories Bar (Coming Soon) */}
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide py-2 px-1">
-            <div className="shrink-0 flex flex-col items-center gap-2 cursor-not-allowed opacity-50 group">
-               <div className="w-16 h-16 rounded-full border-2 border-white/20 border-dashed flex items-center justify-center bg-white/5 transition-colors">
-                  <PlusSquare size={24} className="text-white/40" />
-               </div>
-               <span className="text-xs text-white/50 font-medium">Your Story</span>
-            </div>
-            <div className="shrink-0 flex flex-col justify-center px-4 h-16">
-               <span className="text-xs font-bold text-white/30 uppercase tracking-widest border border-white/10 rounded-full px-3 py-1">Stories Coming Soon</span>
-            </div>
+          {/* Stories & Notes Bar */}
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide py-2 px-1 relative z-20">
+             <div onClick={() => navigate('/create?type=story')} className="shrink-0 flex flex-col items-center gap-2 cursor-pointer group">
+                <div className="w-16 h-16 rounded-full border-2 border-white/20 border-dashed flex items-center justify-center bg-white/5 transition-colors group-hover:bg-white/10 group-hover:border-indigo-400">
+                   <PlusSquare size={24} className="text-white/40 group-hover:text-indigo-400" />
+                </div>
+                <span className="text-xs text-white/50 font-medium">Your Story</span>
+             </div>
+             {useAppStore.getState().stories?.map((story) => {
+                const author = users[story.userId];
+                return (
+                   <div 
+                      key={story.id} 
+                      onClick={() => navigate(`/story/${story.id}`)} 
+                      className="shrink-0 flex flex-col items-center gap-2 cursor-pointer group"
+                   >
+                      <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-indigo-500 to-fuchsia-500">
+                         <img 
+                            src={author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${story.userId}`} 
+                            className="w-full h-full rounded-full object-cover border-2 border-black" 
+                         />
+                      </div>
+                      <span className="text-xs text-white/90 font-medium">{author?.username || 'user'}</span>
+                   </div>
+                );
+             })}
           </div>
 
           {/* Post Composer */}
@@ -491,19 +536,141 @@ export function Home() {
             <img src={currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.id || "d"}`} className="w-10 h-10 rounded-full object-cover border border-white/10" alt="" />
             <div className="flex-1">
                <textarea 
+                  id="home-composer-text"
                   placeholder="What's inspiring you today?" 
                   className="w-full bg-transparent text-white placeholder-white/30 resize-none outline-none text-sm min-h-[60px] py-2"
                ></textarea>
+               
+               <div id="home-composer-preview" className="hidden mt-2 relative w-full h-32 rounded-xl bg-black/50 border border-white/10 overflow-hidden flex items-center justify-center">
+                  <button onClick={() => {
+                     const preview = document.getElementById('home-composer-preview') as HTMLElement;
+                     const img = document.getElementById('home-composer-img') as HTMLImageElement;
+                     const vid = document.getElementById('home-composer-vid') as HTMLVideoElement;
+                     const fileInput = document.getElementById('home-composer-file') as HTMLInputElement;
+                     preview.classList.add('hidden');
+                     img.src = '';
+                     img.classList.add('hidden');
+                     vid.src = '';
+                     vid.classList.add('hidden');
+                     fileInput.value = '';
+                  }} className="absolute top-2 right-2 bg-black/80 hover:bg-black text-white p-1.5 rounded-full z-10 transition-colors">
+                     <PlusSquare size={14} className="rotate-45" />
+                  </button>
+                  <img id="home-composer-img" src="" className="hidden w-full h-full object-cover" />
+                  <video id="home-composer-vid" src="" className="hidden w-full h-full object-cover" autoPlay muted loop />
+               </div>
+
+               <div id="home-composer-music" className="hidden mt-2 relative w-full rounded-xl bg-indigo-900/40 border border-indigo-500/30 p-3 flex items-center gap-3">
+                  <Music className="text-indigo-400" size={16} />
+                  <input id="home-composer-music-url" type="text" placeholder="Spotify/SoundCloud track URL..." className="bg-transparent text-white text-xs outline-none flex-1 placeholder-indigo-300/50" />
+                  <button onClick={() => {
+                     document.getElementById('home-composer-music')?.classList.add('hidden');
+                     (document.getElementById('home-composer-music-url') as HTMLInputElement).value = '';
+                  }} className="text-white/50 hover:text-white"><PlusSquare size={14} className="rotate-45" /></button>
+               </div>
+               
+               <input type="file" id="home-composer-file" className="hidden" accept="image/*,video/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const url = URL.createObjectURL(file);
+                  const preview = document.getElementById('home-composer-preview') as HTMLElement;
+                  const img = document.getElementById('home-composer-img') as HTMLImageElement;
+                  const vid = document.getElementById('home-composer-vid') as HTMLVideoElement;
+                  preview.classList.remove('hidden');
+                  if (file.type.startsWith('video/')) {
+                     vid.src = url;
+                     vid.classList.remove('hidden');
+                     img.classList.add('hidden');
+                  } else {
+                     img.src = url;
+                     img.classList.remove('hidden');
+                     vid.classList.add('hidden');
+                  }
+               }} />
+
                <div className="flex flex-wrap items-center justify-between border-t border-white/5 pt-3 mt-2 gap-2">
                  <div className="flex gap-1 text-white/50">
-                    <button onClick={() => navigate('/create')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Image"><ImageIcon size={18} /></button>
-                    <button onClick={() => navigate('/create')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Video"><Video size={18} /></button>
+                    <button onClick={() => {
+                       const input = document.getElementById('home-composer-file') as HTMLInputElement;
+                       input.accept = 'image/*';
+                       input.click();
+                    }} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Image"><ImageIcon size={18} /></button>
+                    
+                    <button onClick={() => {
+                       const input = document.getElementById('home-composer-file') as HTMLInputElement;
+                       input.accept = 'video/*';
+                       input.click();
+                    }} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Video"><Video size={18} /></button>
+                    
                     <button onClick={() => navigate('/reels')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Reel"><Film size={18} /></button>
-                    <button onClick={() => navigate('/create')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Music"><Music size={18} /></button>
-                    <button onClick={() => navigate('/create')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Poll"><BarChart2 size={18} /></button>
-                    <button onClick={() => navigate('/create')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Location"><MapPin size={18} /></button>
+                    
+                    <button onClick={() => {
+                       const musicPanel = document.getElementById('home-composer-music') as HTMLElement;
+                       musicPanel.classList.remove('hidden');
+                    }} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Music"><Music size={18} /></button>
+                    
+                    <button onClick={() => navigate('/create')} className="p-2 hover:bg-white/5 rounded-full hover:text-indigo-400 transition-colors" title="Add Poll/Location"><MoreVertical size={18} /></button>
                  </div>
-                 <button onClick={() => navigate('/create')} className="bg-white hover:bg-gray-200 text-black px-5 py-1.5 rounded-full text-xs font-bold transition-colors">Post</button>
+                 <button onClick={async () => {
+                    const textArea = document.getElementById('home-composer-text') as HTMLTextAreaElement;
+                    const fileInput = document.getElementById('home-composer-file') as HTMLInputElement;
+                    const musicInput = document.getElementById('home-composer-music-url') as HTMLInputElement;
+                    
+                    const content = textArea.value.trim();
+                    const file = fileInput.files?.[0];
+                    const musicUrl = musicInput.value.trim() || undefined;
+                    
+                    if (!content && !file && !musicUrl) return;
+
+                    const btn = event?.currentTarget as HTMLButtonElement;
+                    const originalText = btn.innerText;
+                    if (btn) {
+                       btn.innerText = 'Posting...';
+                       btn.disabled = true;
+                    }
+
+                    try {
+                       let mediaUrl = undefined;
+                       let mediaType = undefined;
+
+                       if (file) {
+                          const ext = file.name.split('.').pop();
+                          const path = `${currentUser?.id}/${Date.now()}.${ext}`;
+                          const { data: uploadData, error: uploadError } = await supabase.storage.from("media").upload(path, file);
+                          if (uploadError) {
+                             console.error(uploadError);
+                          } else if (uploadData) {
+                             const urlRes = supabase.storage.from("media").getPublicUrl(uploadData.path);
+                             mediaUrl = urlRes.data.publicUrl;
+                             mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+                          }
+                       }
+
+                       await useAppStore.getState().addPost({
+                          userId: currentUser!.id,
+                          content,
+                          image: mediaUrl,
+                          mediaType: mediaType as any,
+                          musicUrl,
+                          musicTitle: musicUrl ? 'Attached Track' : undefined
+                       });
+
+                       textArea.value = '';
+                       fileInput.value = '';
+                       musicInput.value = '';
+                       document.getElementById('home-composer-music')?.classList.add('hidden');
+                       document.getElementById('home-composer-preview')?.classList.add('hidden');
+                       document.getElementById('home-composer-img')?.classList.add('hidden');
+                       document.getElementById('home-composer-vid')?.classList.add('hidden');
+                    } catch (e) {
+                       console.error(e);
+                    } finally {
+                       if (btn) {
+                          btn.innerText = originalText;
+                          btn.disabled = false;
+                       }
+                    }
+                 }} className="bg-white hover:bg-gray-200 text-black px-5 py-1.5 rounded-full text-xs font-bold transition-colors">Post</button>
                </div>
             </div>
           </div>
@@ -596,6 +763,25 @@ export function Home() {
             </div>
           </div>
         </aside>
+      </div>
+      
+      {/* Fullscreen Viewer Overlay */}
+      <div id="fullscreen-viewer" className="hidden fixed inset-0 z-[200] bg-black/95 backdrop-blur-md items-center justify-center pointer-events-auto">
+         <button 
+           onClick={() => {
+              const v = document.getElementById("fullscreen-viewer") as any;
+              const vid = document.getElementById("fullscreen-vid") as HTMLVideoElement;
+              v.classList.remove("flex");
+              v.classList.add("hidden");
+              vid.pause();
+              vid.src = "";
+           }}
+           className="absolute top-6 right-6 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
+         >
+            <X size={24} />
+         </button>
+         <img id="fullscreen-img" src="" className="hidden max-w-full max-h-full object-contain" />
+         <video id="fullscreen-vid" src="" controls autoPlay className="hidden max-w-full max-h-full object-contain" />
       </div>
     </div>
   );

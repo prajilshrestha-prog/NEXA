@@ -173,7 +173,7 @@ export function Explore() {
               {userResults.length > 0 && (
                 <div className="space-y-4">
                   <h2 className="text-xs font-bold text-white/50 uppercase tracking-widest flex items-center gap-2">
-                    <User size={14} /> Entities
+                    <User size={14} /> Users
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {userResults.map((user) => {
@@ -298,13 +298,14 @@ export function Explore() {
               {postResults.length > 0 && (
                 <div className="space-y-4">
                   <h2 className="text-xs font-bold text-white/50 uppercase tracking-widest flex items-center gap-2">
-                    <Image size={14} /> Broadcasts
+                    <Image size={14} /> Posts
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {postResults.map((post) => (
                       <div
                         key={post.id}
-                        className="p-4 rounded-2xl bg-[var(--color-nexa-dark)] border border-white/5"
+                        onClick={() => navigate(`/post/${post.id}`)}
+                        className="p-4 rounded-2xl bg-[var(--color-nexa-dark)] border border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
                       >
                         <div className="text-sm text-white/80 whitespace-pre-wrap">
                           {post.content}
@@ -325,7 +326,7 @@ export function Explore() {
               {reelResults.length > 0 && (
                 <div className="space-y-4">
                   <h2 className="text-xs font-bold text-white/50 uppercase tracking-widest flex items-center gap-2">
-                    <Film size={14} /> Memories
+                    <Film size={14} /> Reels
                   </h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {reelResults.map((reel) => (
@@ -358,6 +359,24 @@ export function Explore() {
       ) : (
         <>
           {posts.length === 0 && <div className="text-center text-white/50 py-10">No content available to explore yet.</div>}
+
+          {/* Trending Hashtags */}
+          <div className="mb-8 space-y-4">
+             <h2 className="text-xs font-bold text-white/50 uppercase tracking-widest flex items-center gap-2">
+               <Sparkles size={14} /> Trending Hashtags
+             </h2>
+             <div className="flex flex-wrap gap-2">
+                {Array.from(new Set([...posts.map(p => p.content), ...(useAppStore.getState().reels || []).map(r => r.caption)].join(' ').match(/#[\w]+/g) || [])).slice(0, 10).map((tag: string) => (
+                   <button 
+                     key={tag}
+                     onClick={() => setSearchQuery(tag)} 
+                     className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-full text-xs font-bold transition-colors text-indigo-300"
+                   >
+                     {tag}
+                   </button>
+                ))}
+             </div>
+          </div>
 
           {/* Explore Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
