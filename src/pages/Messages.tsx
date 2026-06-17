@@ -130,6 +130,8 @@ export function Messages() {
   if (!currentUser) return null;
 
   const friendRequests = useAppStore((state) => state.friendRequests);
+  const notes = useAppStore((state) => state.notes) || [];
+  const addNote = useAppStore((state) => state.addNote) || (async () => {});
   const isFriend = activePartner
     ? friendRequests.some(
         (r) =>
@@ -223,7 +225,7 @@ export function Messages() {
                  onClick={() => {
                     const text = window.prompt("Share a thought (Note):");
                     if (text) {
-                       useAppStore.getState().addNote({
+                       addNote({
                           content: text,
                           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                           userId: currentUser.id
@@ -240,7 +242,7 @@ export function Messages() {
                   <span className="text-[10px] text-white/50 font-medium">Your Note</span>
               </div>
               
-              {useAppStore.getState().notes?.map(note => {
+              {notes?.map(note => {
                  const author = users[note.userId];
                  return (
                     <div key={note.id} className="relative shrink-0 flex flex-col items-center gap-1 cursor-pointer group">
@@ -464,17 +466,30 @@ export function Messages() {
                 <button className="p-2 hover:bg-white/10 rounded-full transition-colors">
                   <MoreVertical size={18} />
                 </button>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-black/90 border border-white/10 rounded-2xl overflow-hidden glass shadow-2xl scale-0 group-hover:scale-100 origin-top-right transition-transform">
-                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors">
-                    Mute Notifications
+                <div className="absolute right-0 top-full mt-2 w-48 bg-black/90 border border-white/10 rounded-2xl overflow-hidden glass shadow-2xl scale-0 group-hover:scale-100 origin-top-right transition-transform z-50 flex flex-col">
+                  {activePartner && (
+                    <button 
+                      className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors"
+                      onClick={() => navigate(`/u/${activePartner.username}`)}
+                    >
+                      View Profile
+                    </button>
+                  )}
+                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => alert("Chat muted")}>
+                    Mute Chat
                   </button>
-                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors">
-                    Search Inside
+                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => alert("Chat archived")}>
+                    Archive Chat
                   </button>
+                  {activePartner && (
+                    <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => alert("User blocked")}>
+                      Block User
+                    </button>
+                  )}
                   <button
-                    className="w-full text-left px-4 py-3 hover:bg-rose-500/20 text-sm text-rose-500 transition-colors border-t border-white/5"
+                    className="w-full text-left px-4 py-3 hover:bg-rose-500/20 text-sm text-rose-500 transition-colors border-y border-white/5"
                     onClick={async () => {
-                      if (window.confirm("Permanently erase sync memory?")) {
+                      if (window.confirm("Permanently delete conversation?")) {
                         try {
                           await deleteConversation(activeConversationId);
                           navigate("/messages");
@@ -482,7 +497,10 @@ export function Messages() {
                       }
                     }}
                   >
-                    Delete Transfer Line
+                    Delete Conversation
+                  </button>
+                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-rose-400 transition-colors" onClick={() => alert("User reported")}>
+                    Report User
                   </button>
                 </div>
               </div>
@@ -620,12 +638,15 @@ export function Messages() {
                   className="flex-1 bg-transparent border-none text-white text-sm max-h-32 min-h-[44px] py-3 focus:outline-none resize-none placeholder:text-white/30 scrollbar-hide"
                 />
                 <div className="flex gap-2">
-                  <button className="p-3 text-white/50 hover:text-white transition-colors">
+                  <button onClick={() => alert("Voice messaging coming in next release!")} className="p-3 text-white/50 hover:text-white transition-colors">
                     <Mic size={20} />
                   </button>
-                  <button className="p-3 text-white/50 hover:text-white transition-colors">
+                  <label className="p-3 text-white/50 hover:text-white transition-colors cursor-pointer">
+                    <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => {
+                       if (e.target.files?.[0]) alert("Image attached: " + e.target.files[0].name);
+                    }}/>
                     <FileImage size={20} />
-                  </button>
+                  </label>
                   <button
                     onClick={handleSend}
                     disabled={!inputText.trim()}

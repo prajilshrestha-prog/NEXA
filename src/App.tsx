@@ -46,9 +46,6 @@ const StoryViewer = lazy(() =>
 const Portfolio = lazy(() =>
   import("./pages/Portfolio").then((m) => ({ default: m.Portfolio })),
 );
-const NexaAI = lazy(() =>
-  import("./pages/NexaAI").then((m) => ({ default: m.NexaAI })),
-);
 const CreatorHub = lazy(() =>
   import("./pages/CreatorHub").then((m) => ({ default: m.CreatorHub })),
 );
@@ -121,6 +118,8 @@ export default function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === "INITIAL_SESSION") return;
+      
       // @ts-ignore
       if (_event === "TOKEN_REFRESH_FAILED") {
         supabase.auth.signOut().catch(() => {});
@@ -132,23 +131,29 @@ export default function App() {
       }
     });
 
-    // Init Live DB Listeners safely
-    let cleanupRealtime: (() => void) | undefined;
-    try {
-      if (initRealtime) cleanupRealtime = initRealtime();
-    } catch (e) {
-      console.error("Realtime init error:", e);
-    }
-
     return () => {
       if (subscription && typeof subscription.unsubscribe === "function") {
         subscription.unsubscribe();
       }
+    };
+  }, [setCurrentUser]);
+
+  useEffect(() => {
+    let cleanupRealtime: (() => void) | undefined;
+    if (currentUser?.id) {
+       try {
+         if (initRealtime) cleanupRealtime = initRealtime();
+       } catch (e) {
+         console.error("Realtime init error:", e);
+       }
+    }
+
+    return () => {
       if (typeof cleanupRealtime === "function") {
         cleanupRealtime();
       }
     };
-  }, [setCurrentUser, initRealtime]);
+  }, [currentUser?.id, initRealtime]);
 
   if (!hasSupabaseConfig) {
     return <SupabaseSetup />;
@@ -188,7 +193,6 @@ export default function App() {
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/u/:username" element={<Profile />} />
                   <Route path="/portfolio" element={<Portfolio />} />
-                  <Route path="/nexa-ai" element={<NexaAI />} />
                   <Route path="/creator-hub" element={<CreatorHub />} />
                   <Route path="/opportunities" element={<Opportunities />} />
                   <Route path="/reels" element={<Reels />} />

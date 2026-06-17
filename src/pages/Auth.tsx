@@ -9,6 +9,7 @@ export function Auth() {
 
   const [isLogin, setIsLogin] = useState(true);
   const [isReset, setIsReset] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -102,7 +103,7 @@ export function Auth() {
         if (profile) {
           const sessionData = await supabase.auth.getSession();
           console.log("Current session:", sessionData);
-          setCurrentUser(profile);
+          await useAppStore.getState().initializeSession(data.user.id);
           navigate("/"); // 🚀 FIXED: redirect to Home
         } else {
           throw new Error("Login failed: Profile could not be verified");
@@ -132,10 +133,12 @@ export function Auth() {
         }
 
         const user = data.user;
+        const session = data.session;
 
         if (!user) throw new Error("Signup failed: No user created");
 
-        // ⏳ wait for profile trigger (safe fallback)
+        // Wait to make sure profile trigger succeeds. Instead of navigating away immediately,
+        // we'll check if a session exists (no email verification needed). If no session, go to verify screen.
         let profile = null;
 
         for (let i = 0; i < 5; i++) {
@@ -144,10 +147,6 @@ export function Auth() {
             .select("*")
             .eq("id", user.id)
             .maybeSingle();
-
-          if (error) {
-            console.error("Profile fetch loop error:", error);
-          }
 
           if (!error && data) {
             profile = data;
@@ -158,8 +157,6 @@ export function Auth() {
         }
 
         if (!profile) {
-          // Manual fallback if trigger is missing or failed
-          console.warn("Profile not found from trigger, creating manually...");
           const { data: manualProfile, error: manualError } = await supabase
             .from("profiles")
             .insert({
@@ -174,20 +171,22 @@ export function Auth() {
             .select("*")
             .maybeSingle();
 
-          if (manualError) {
-            console.error("Manual profile creation error:", manualError);
-            throw new Error(`Signup failed: Could not create profile. ${manualError.message}`);
+          if (!manualError) {
+             profile = manualProfile;
           }
-          profile = manualProfile;
+        }
+
+        if (!session) {
+           setIsVerifying(true);
+           setLoading(false);
+           return;
         }
 
         if (profile) {
-          const sessionData = await supabase.auth.getSession();
-          console.log("Current session after signup:", sessionData);
-          setCurrentUser(profile);
-          navigate("/"); // 🚀 FIXED NAVIGATION
+           await useAppStore.getState().initializeSession(user.id);
+           navigate("/");
         } else {
-          throw new Error("Signup failed: Profile could not be created");
+           throw new Error("Signup failed: Profile could not be created");
         }
       }
     } catch (err: any) {
@@ -218,7 +217,75 @@ export function Auth() {
           </div>
         )}
 
-        {isReset ? (
+        {isVerifying ? (
+          <div className="space-y-4 text-center">
+            <h2 className="text-xl font-bold text-white mb-2">Verify Your Email</h2>
+            <p className="text-white/60 text-sm mb-6">
+              We've sent a verification link to <span className="text-white font-medium">{email}</span>. Please verify your account before continuing.
+            </p>
+            <div className="flex flex-col gap-3">
+               <button 
+                  onClick={async () => {
+                     setLoading(true);
+                     try {
+                        const { error } = await supabase.auth.resend({ type: 'signup', email });
+                        if (error) throw error;
+                        alert("Verification email resent!");
+                     } catch (e: any) {
+                        setError(e.message || "Failed to resend.");
+                     } finally {
+                        setLoading(false);
+                     }
+                  }} 
+                  disabled={loading} 
+                  className="w-full py-4 rounded-xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center gap-2 transition-colors border border-white/10"
+               >
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : null} Resend Email
+               </button>
+               <button 
+                  onClick={async () => {
+                     setLoading(true);
+                     try {
+                        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                        if (error) {
+                           if (error.message.includes("Email not confirmed")) {
+                              throw new Error("Email is still not confirmed. Please check your inbox.");
+                           }
+                           throw error;
+                        }
+                        if (data.session) {
+                           const { data: p } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
+                           if (p) {
+                              await useAppStore.getState().initializeSession(data.user.id);
+                              navigate("/");
+                           } else {
+                              window.location.reload();
+                           }
+                        }
+                     } catch (e: any) {
+                        setError(e.message || "Verification failed");
+                     } finally {
+                        setLoading(false);
+                     }
+                  }} 
+                  disabled={loading} 
+                  className="w-full py-4 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white flex items-center justify-center gap-2 transition-colors border border-indigo-400"
+               >
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : null} I've Verified My Email
+               </button>
+               <button 
+                  onClick={() => {
+                     setIsVerifying(false);
+                     setIsLogin(true);
+                     setError("");
+                  }} 
+                  className="text-white/40 hover:text-white/60 text-sm transition-colors mt-2"
+               >
+                  Back to Login
+               </button>
+            </div>
+          </div>
+        ) : isReset ? (
           <form onSubmit={handleResetPassword} className="space-y-4">
             {resetSent ? (
               <div className="text-center text-emerald-400 text-sm py-4">

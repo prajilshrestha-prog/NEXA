@@ -10,6 +10,8 @@ import {
   X,
   UserPlus,
   UserCheck,
+  Clock,
+  Check,
   MessageSquare,
   Video,
   Grid,
@@ -23,6 +25,8 @@ import { useAppStore, User } from "../store/useAppStore";
 import { useCommunicationStore } from "../store/communicationStore";
 import { uploadMedia } from "../lib/upload";
 import { supabase } from "../lib/supabase";
+import { PostCard } from "./Home";
+import { AnimatePresence, motion } from "motion/react";
 
 export function Profile() {
   const { username } = useParams<{ username: string }>();
@@ -113,6 +117,8 @@ export function Profile() {
   const [isSaving, setIsSaving] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [selectedPost, setSelectedPost] = useState<any | null>(null);
+  const [selectedReel, setSelectedReel] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     username: "",
@@ -476,12 +482,50 @@ export function Profile() {
                 >
                   <MessageSquare size={20} />
                 </button>
-                <button
-                   onClick={() => sendFriendRequest(displayUser.id)}
-                   className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors border border-white/10"
-                >
-                   <UserPlus size={20} />
-                </button>
+                {activeFriendRequest ? (
+                  activeFriendRequest.status === "accepted" ? (
+                    <button
+                      onClick={() => removeFriend(displayUser.id)}
+                      className="px-4 py-3 rounded-xl bg-white/5 hover:bg-rose-500/20 text-emerald-400 hover:text-rose-400 transition-colors border border-emerald-500/50 hover:border-rose-500/50"
+                      title="Remove Friend"
+                    >
+                      <UserCheck size={20} />
+                    </button>
+                  ) : activeFriendRequest.senderId === currentUser.id ? (
+                    <button
+                      disabled
+                      className="px-4 py-3 rounded-xl bg-white/5 text-white/50 border border-white/10"
+                      title="Request Pending"
+                    >
+                      <Clock size={20} />
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                       <button
+                         onClick={() => acceptFriendRequest(activeFriendRequest.id)}
+                         className="px-4 py-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 transition-colors border border-emerald-500/50"
+                         title="Accept"
+                       >
+                         <Check size={20} />
+                       </button>
+                       <button
+                         onClick={() => declineFriendRequest(activeFriendRequest.id)}
+                         className="px-4 py-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 transition-colors border border-rose-500/50"
+                         title="Decline"
+                       >
+                         <X size={20} />
+                       </button>
+                    </div>
+                  )
+                ) : (
+                  <button
+                     onClick={() => sendFriendRequest(displayUser.id)}
+                     className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors border border-white/10"
+                     title="Add Friend"
+                  >
+                     <UserPlus size={20} />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -562,7 +606,7 @@ export function Profile() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {userPosts.length > 0 ? (
                   userPosts.map(post => (
-                    <div key={post.id} className="bg-white/5 border border-white/5 p-5 rounded-3xl hover:bg-white/10 transition-colors">
+                    <div key={post.id} onClick={() => setSelectedPost(post)} className="bg-white/5 border border-white/5 p-5 rounded-3xl hover:bg-white/10 transition-colors cursor-pointer">
                       <p className="text-sm text-white/90 mb-4 line-clamp-3">{post.title ? <strong>{post.title}</strong> : null} {post.content}</p>
                       {post.image && (
                          <div className="aspect-square rounded-2xl overflow-hidden bg-black/50">
@@ -593,7 +637,7 @@ export function Profile() {
                    userReels.map(reel => {
                       const isImage = reel.video?.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i) || !reel.video?.match(/\.(mp4|webm|mov)(\?.*)?$/i);
                       return (
-                        <div key={reel.id} className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group">
+                        <div key={reel.id} onClick={() => setSelectedReel(reel)} className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group">
                            {isImage ? (
                              <img src={reel.video} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Reel" />
                            ) : (
@@ -706,6 +750,62 @@ export function Profile() {
            )}
         </div>
       </div>
+      
+      {/* Modals */}
+      <AnimatePresence>
+         {selectedPost && (
+            <motion.div
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+               onClick={() => setSelectedPost(null)}
+            >
+               <motion.div
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.95 }}
+                  className="w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-hide relative"
+                  onClick={e => e.stopPropagation()}
+               >
+                  <button onClick={() => setSelectedPost(null)} className="absolute top-4 right-4 z-50 p-2 bg-black/50 text-white rounded-full hover:bg-black/80">
+                     <X size={20} />
+                  </button>
+                  <PostCard post={selectedPost} />
+               </motion.div>
+            </motion.div>
+         )}
+
+         {selectedReel && (
+            <motion.div
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+               onClick={() => setSelectedReel(null)}
+            >
+               <motion.div
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.95 }}
+                  className="w-full max-w-sm aspect-[9/16] relative bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl"
+                  onClick={e => e.stopPropagation()}
+               >
+                  <button onClick={() => setSelectedReel(null)} className="absolute top-4 right-4 z-50 p-2 bg-black/50 text-white rounded-full hover:bg-black/80">
+                     <X size={20} />
+                  </button>
+                  {selectedReel.video?.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
+                     <video src={selectedReel.video} autoPlay loop controls className="w-full h-full object-cover" />
+                  ) : (
+                     <img src={selectedReel.video} alt="Reel" className="w-full h-full object-cover" />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none flex flex-col justify-end p-6">
+                     <p className="text-white text-sm font-medium">{selectedReel.caption}</p>
+                  </div>
+               </motion.div>
+            </motion.div>
+         )}
+      </AnimatePresence>
     </div>
   );
 }

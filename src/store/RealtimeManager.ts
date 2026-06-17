@@ -208,35 +208,18 @@ class RealtimeManager {
 
       case "profiles": {
         if (event === "UPDATE") {
-          useAppStore.setState((s) => {
-            const u = s.users[newRec.id];
-            const newUser = u
-              ? {
-                  ...u,
-                  name: newRec.name,
-                  username: newRec.username,
-                  banner: newRec.banner,
-                  avatar: newRec.avatar,
-                  bio: newRec.bio,
-                  website: newRec.website,
-                  verified: newRec.verified,
-                }
-              : {
-                  id: newRec.id,
-                  name: newRec.name,
-                  username: newRec.username,
-                  banner: newRec.banner,
-                  avatar: newRec.avatar,
-                  bio: newRec.bio,
-                  website: newRec.website,
-                  verified: newRec.verified,
-                };
-            return {
-              users: { ...s.users, [newRec.id]: newUser },
-              ...(s.currentUser?.id === newRec.id
-                ? { currentUser: { ...s.currentUser, ...newUser } as any }
-                : {}),
-            };
+          import("./useAppStore").then(({ normalizeProfile }) => {
+             useAppStore.setState((s) => {
+               const u = s.users[newRec.id];
+               const normalized = normalizeProfile(newRec);
+               const newUser = u ? { ...u, ...normalized } : normalized;
+               return {
+                 users: { ...s.users, [newRec.id]: newUser },
+                 ...(s.currentUser?.id === newRec.id
+                   ? { currentUser: { ...s.currentUser, ...newUser } as any }
+                   : {}),
+               };
+             });
           });
         }
         break;

@@ -27,7 +27,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { shareContent } from "../lib/share";
 import { supabase } from "../lib/supabase";
 
-const PostCard = ({ post }: { post: any }) => {
+export const PostCard = ({ post }: { post: any }) => {
   const users = useAppStore((state) => state.users) || {};
   const currentUser = useAppStore((state) => state.currentUser);
   const likePost = useAppStore((state) => state.likePost) || (async () => {});
@@ -430,6 +430,7 @@ export function Home() {
   }, [fetchPosts, fetchInteractions]);
 
   const reels = useAppStore((state) => state.reels) || [];
+  const stories = useAppStore((state) => state.stories) || [];
 
   const getTrendingTags = () => {
     const tagsMap: Record<string, { count: number, score: number }> = {};
@@ -511,7 +512,7 @@ export function Home() {
                 </div>
                 <span className="text-xs text-white/50 font-medium">Your Story</span>
              </div>
-             {useAppStore.getState().stories?.map((story) => {
+             {stories?.map((story) => {
                 const author = users[story.userId];
                 return (
                    <div 
@@ -556,8 +557,8 @@ export function Home() {
                   }} className="absolute top-2 right-2 bg-black/80 hover:bg-black text-white p-1.5 rounded-full z-10 transition-colors">
                      <PlusSquare size={14} className="rotate-45" />
                   </button>
-                  <img id="home-composer-img" src="" className="hidden w-full h-full object-cover" />
-                  <video id="home-composer-vid" src="" className="hidden w-full h-full object-cover" autoPlay muted loop />
+                  <img id="home-composer-img" className="hidden w-full h-full object-cover" />
+                  <video id="home-composer-vid" className="hidden w-full h-full object-cover" autoPlay muted loop />
                </div>
 
                <div id="home-composer-music" className="hidden mt-2 relative w-full rounded-xl bg-indigo-900/40 border border-indigo-500/30 p-3 flex items-center gap-3">
@@ -763,25 +764,6 @@ export function Home() {
             </div>
           </div>
         </aside>
-      </div>
-      
-      {/* Fullscreen Viewer Overlay */}
-      <div id="fullscreen-viewer" className="hidden fixed inset-0 z-[200] bg-black/95 backdrop-blur-md items-center justify-center pointer-events-auto">
-         <button 
-           onClick={() => {
-              const v = document.getElementById("fullscreen-viewer") as any;
-              const vid = document.getElementById("fullscreen-vid") as HTMLVideoElement;
-              v.classList.remove("flex");
-              v.classList.add("hidden");
-              vid.pause();
-              vid.src = "";
-           }}
-           className="absolute top-6 right-6 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
-         >
-            <X size={24} />
-         </button>
-         <img id="fullscreen-img" src="" className="hidden max-w-full max-h-full object-contain" />
-         <video id="fullscreen-vid" src="" controls autoPlay className="hidden max-w-full max-h-full object-contain" />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
 import { useTheme } from "../../contexts/ThemeContext";
-import { AICoreAssistant } from "./AICoreAssistant";
+import { X } from "lucide-react";
 
 export function Shell() {
   const { theme } = useTheme();
@@ -24,8 +24,26 @@ export function Shell() {
         </div>
         <Outlet />
       </main>
-      <AICoreAssistant />
       <BottomNav />
+      
+      {/* Fullscreen Viewer Overlay */}
+      <div id="fullscreen-viewer" className="hidden fixed inset-0 z-[200] bg-black/95 backdrop-blur-md items-center justify-center pointer-events-auto">
+         <button 
+           onClick={() => {
+              const v = document.getElementById("fullscreen-viewer") as any;
+              const vid = document.getElementById("fullscreen-vid") as HTMLVideoElement;
+              v.classList.remove("flex");
+              v.classList.add("hidden");
+              vid.pause();
+              vid.src = "";
+           }}
+           className="absolute top-6 right-6 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
+         >
+            <X size={24} />
+         </button>
+         <img id="fullscreen-img" className="hidden max-w-full max-h-full object-contain" />
+         <video id="fullscreen-vid" controls autoPlay className="hidden max-w-full max-h-full object-contain" />
+      </div>
     </div>
   );
 }

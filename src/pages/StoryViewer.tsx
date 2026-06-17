@@ -22,6 +22,16 @@ export function StoryViewer() {
   const user = story ? users[story.userId] : null;
 
   useEffect(() => {
+    if (stories.length > 0 && id) {
+      const actualIndex = stories.findIndex(s => s.id === id);
+      if (actualIndex >= 0 && story?.id !== id) {
+        setCurrentIndex(actualIndex);
+        setProgress(0);
+      }
+    }
+  }, [stories, id, story?.id]);
+
+  useEffect(() => {
      if (story) viewStory(story.id);
   }, [story, viewStory]);
 

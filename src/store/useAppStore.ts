@@ -459,7 +459,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (existing) return;
 
-    const { data } = await supabase
+    // Optimistic update
+    const optimisticReq = {
+      id: "opt_" + Date.now(),
+      senderId: state.currentUser.id,
+      receiverId,
+      status: "pending" as const,
+      createdAt: new Date().toISOString()
+    };
+    set(s => ({ friendRequests: [...s.friendRequests, optimisticReq] }));
+
+    const { data, error } = await supabase
       .from("friend_requests")
       .insert({
         sender_id: state.currentUser.id,
@@ -468,6 +478,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
       .select()
       .single();
+
+    if (error) {
+       console.error("sendFriendReq error", error);
+       set(s => ({ friendRequests: s.friendRequests.filter(r => r.id !== optimisticReq.id) }));
+    }
 
     if (data) {
       get().fetchFriendRequests();
@@ -483,6 +498,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   acceptFriendRequest: async (requestId: string) => {
+    set(s => ({ 
+        friendRequests: s.friendRequests.map(r => r.id === requestId ? { ...r, status: "accepted" } : r) 
+    }));
     await supabase
       .from("friend_requests")
       .update({ status: "accepted" })
@@ -491,6 +509,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   declineFriendRequest: async (requestId: string) => {
+    set(s => ({ 
+        friendRequests: s.friendRequests.map(r => r.id === requestId ? { ...r, status: "declined" } : r) 
+    }));
     await supabase
       .from("friend_requests")
       .update({ status: "declined" })
@@ -507,6 +528,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         (r.receiverId === state.currentUser?.id && r.senderId === targetId),
     );
     if (req) {
+      set(s => ({ friendRequests: s.friendRequests.filter(r => r.id !== req.id) }));
       await supabase.from("friend_requests").delete().eq("id", req.id);
       get().fetchFriendRequests();
     }
@@ -688,7 +710,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   addNote: async (note) => {
     const state = get();
     if (!state.currentUser) return;
-    const { data } = await supabase.from("notes").insert({
+    
+    const optimisticNote: Note = {
+      id: "optimistic_" + Date.now(),
+      userId: state.currentUser.id,
+      content: note.content,
+      musicTitle: note.musicTitle,
+      musicUrl: note.musicUrl,
+      gifUrl: note.gifUrl,
+      expiresAt: note.expiresAt,
+      createdAt: new Date().toISOString()
+    };
+    
+    set(s => ({ notes: [optimisticNote, ...s.notes] }));
+
+    const { data, error } = await supabase.from("notes").insert({
       user_id: state.currentUser.id,
       content: note.content,
       music_title: note.musicTitle,
@@ -696,18 +732,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       gif_url: note.gifUrl,
       expires_at: note.expiresAt,
     }).select().single();
-    if(data) {
-      const newNote: Note = {
-        id: data.id,
-        userId: data.user_id,
-        content: data.content,
-        musicTitle: data.music_title,
-        musicUrl: data.music_url,
-        gifUrl: data.gif_url,
-        expiresAt: data.expires_at,
-        createdAt: data.created_at,
-      };
-      set(s => ({ notes: [newNote, ...s.notes] }));
+    
+    if(error) {
+       console.error("Error adding note:", error);
+       set(s => ({ notes: s.notes.filter(n => n.id !== optimisticNote.id) }));
+    } else if(data) {
+       set(s => ({ 
+           notes: s.notes.map(n => n.id === optimisticNote.id ? {
+                id: data.id,
+                userId: data.user_id,
+                content: data.content,
+                musicTitle: data.music_title,
+                musicUrl: data.music_url,
+                gifUrl: data.gif_url,
+                expiresAt: data.expires_at,
+                createdAt: data.created_at,
+           } : n)
+       }));
     }
   },
 

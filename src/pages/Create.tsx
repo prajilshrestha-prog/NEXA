@@ -7,7 +7,7 @@ import {
   FileText,
   Music,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useAppStore } from "../store/useAppStore";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { uploadMedia } from "../lib/upload";
@@ -23,6 +23,7 @@ export function Create() {
   const [mediaType, setMediaType] = useState<"image" | "video" | undefined>();
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showSuccess, setShowSuccess] = useState(false);
   const addPost = useAppStore((state) => state.addPost) || (async () => {});
   const addReel = useAppStore((state) => state.addReel) || (async () => {});
   const addStory = useAppStore((state) => state.addStory) || (async () => {});
@@ -87,6 +88,7 @@ export function Create() {
           mediaUrl: finalImageUrl,
           mediaType: mediaType || "image",
           caption: title || content || undefined,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         };
         console.log("STORY INSERT", storyData);
         await addStory(storyData as any);
@@ -96,7 +98,15 @@ export function Create() {
         URL.revokeObjectURL(image);
       }
 
-      navigate("/");
+      setShowSuccess(true);
+      setTitle("");
+      setContent("");
+      setImage("");
+      setImageFile(null);
+      setMediaType(undefined);
+      
+      setTimeout(() => setShowSuccess(false), 3000);
+      
     } catch (e: any) {
       console.error(e);
       alert("Upload failed: " + (e?.message || JSON.stringify(e)));
@@ -118,6 +128,19 @@ export function Create() {
         </header>
         
         {/* Type Selector */}
+        <AnimatePresence>
+          {showSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="w-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 p-4 rounded-xl text-center font-semibold"
+            >
+              Successfully published {postType}!
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
         <div className="flex justify-center gap-4 flex-wrap">
           <button
             onClick={() => setPostType("post")}
@@ -228,47 +251,12 @@ export function Create() {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-indigo-500/5 p-6 rounded-2xl border border-indigo-500/10 backdrop-blur-xl space-y-4">
-              <div className="flex items-center gap-2 text-indigo-400">
-                <Sparkles size={18} />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                  AI Enhancement
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 rounded-xl border border-white/5 hover:bg-white/5 cursor-pointer transition-colors bg-white/5">
-                  <input
-                    type="checkbox"
-                    className="accent-indigo-500 w-4 h-4"
-                  />
-                  <span className="text-xs font-semibold">
-                    Auto Color Grading
-                  </span>
-                </label>
-                <label className="flex items-center gap-3 p-3 rounded-xl border border-white/5 hover:bg-white/5 cursor-pointer transition-colors bg-white/5">
-                  <input
-                    type="checkbox"
-                    className="accent-indigo-500 w-4 h-4"
-                  />
-                  <span className="text-xs font-semibold">
-                    Smart Auto-Tagging
-                  </span>
-                </label>
-                <label className="flex items-center gap-3 p-3 rounded-xl border border-white/5 hover:bg-white/5 cursor-pointer transition-colors bg-white/5">
-                  <input
-                    type="checkbox"
-                    className="accent-indigo-500 w-4 h-4"
-                  />
-                  <span className="text-xs font-semibold">
-                    Cinematic Captions
-                  </span>
-                </label>
-              </div>
-            </div>
-
             <button
-              onClick={handlePublish}
+              onClick={(e) => {
+                e.preventDefault();
+                handlePublish();
+              }}
+              type="button"
               disabled={(!title && !content) || isPublishing}
               className="w-full py-4 rounded-full bg-white text-black font-bold tracking-tight hover:bg-gray-200 transition-colors disabled:opacity-50 flex justify-center items-center relative overflow-hidden"
             >
