@@ -138,8 +138,8 @@ class RealtimeManager {
             const p = {
               id: newRec.id,
               userId: newRec.user_id,
-              content: newRec.content,
-              image: newRec.image,
+              content: newRec.caption,
+              image: newRec.media_url,
               mediaType: newRec.media_type,
               musicTitle: newRec.music_title,
               musicArtist: newRec.music_artist,
@@ -155,6 +155,17 @@ class RealtimeManager {
               return { posts: [p, ...s.posts] };
             });
           });
+        }
+        if (event === "UPDATE") {
+           useAppStore.setState((s) => ({
+             posts: s.posts.map(p => p.id === newRec.id ? { 
+                ...p, 
+                likes: newRec.likes || 0,
+                comments: newRec.comments || 0,
+                reposts: newRec.reposts || 0,
+                content: newRec.caption || p.content 
+             } : p)
+           }));
         }
         break;
       }
@@ -190,7 +201,7 @@ class RealtimeManager {
             const r = {
               id: newRec.id,
               userId: newRec.user_id,
-              video: newRec.video,
+              video: newRec.video_url || newRec.video,
               caption: newRec.caption,
               music: newRec.music,
               likes: newRec.likes || 0,
@@ -202,6 +213,16 @@ class RealtimeManager {
               return { reels: [r, ...s.reels] };
             });
           });
+        }
+        if (event === "UPDATE") {
+           useAppStore.setState((s) => ({
+             reels: s.reels.map(r => r.id === newRec.id ? { 
+                ...r, 
+                likes: newRec.likes || 0,
+                comments: newRec.comments || 0,
+                caption: newRec.caption || r.caption 
+             } : r)
+           }));
         }
         break;
       }
@@ -297,7 +318,9 @@ class RealtimeManager {
                 id: newRec.id,
                 conversationId: newRec.conversation_id,
                 senderId: newRec.sender_id,
-                content: newRec.content,
+                content: newRec.content || "",
+                image: newRec.image,
+                voice: newRec.voice,
                 createdAt: newRec.created_at,
                 read: newRec.read || false,
               };
@@ -337,6 +360,26 @@ class RealtimeManager {
               });
             }
           });
+        }
+        if (event === "UPDATE") {
+           import("./communicationStore").then((m) => {
+              m.useCommunicationStore.setState((s) => {
+                 const existing = s.messages[newRec.conversation_id] || [];
+                 const updated = existing.map(msg => msg.id === newRec.id ? {
+                     ...msg,
+                     read: newRec.read !== undefined ? newRec.read : msg.read,
+                     content: newRec.content || msg.content,
+                     image: newRec.image !== undefined ? newRec.image : msg.image,
+                     voice: newRec.voice !== undefined ? newRec.voice : msg.voice
+                 } : msg);
+                 return {
+                    messages: {
+                       ...s.messages,
+                       [newRec.conversation_id]: updated
+                    }
+                 };
+              });
+           });
         }
         break;
       }
@@ -417,7 +460,15 @@ class RealtimeManager {
          break;
       }
       case "call_sessions": {
-        // Handled via webrtc_signals
+        if (event === "UPDATE" && newRec.status === "ended") {
+           import("./communicationStore").then(m => {
+              const state = m.useCommunicationStore.getState();
+              if (state.currentCall.sessionId === newRec.id && state.currentCall.status !== "idle") {
+                 // End it without updating DB again
+                 state.endCall();
+              }
+           });
+        }
         break;
       }
       case "webrtc_signals": {

@@ -230,7 +230,7 @@ export function Auth() {
                      try {
                         const { error } = await supabase.auth.resend({ type: 'signup', email });
                         if (error) throw error;
-                        alert("Verification email resent!");
+                        setError("Verification email resent! Please check your inbox.");
                      } catch (e: any) {
                         setError(e.message || "Failed to resend.");
                      } finally {

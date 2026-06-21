@@ -24,6 +24,7 @@ export function Create() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const addPost = useAppStore((state) => state.addPost) || (async () => {});
   const addReel = useAppStore((state) => state.addReel) || (async () => {});
   const addStory = useAppStore((state) => state.addStory) || (async () => {});
@@ -32,14 +33,15 @@ export function Create() {
 
   const handlePublish = async () => {
     if (!currentUser || (!title && !content && !imageFile)) return;
+    setErrorMsg("");
     
     if (postType === "reel" && mediaType !== "video") {
-      alert("Reels must include a video.");
+      setErrorMsg("Reels must include a video.");
       return;
     }
     
     if (postType === "story" && !imageFile) {
-      alert("Stories must include an image or video.");
+      setErrorMsg("Stories must include an image or video.");
       return;
     }
 
@@ -109,7 +111,7 @@ export function Create() {
       
     } catch (e: any) {
       console.error(e);
-      alert("Upload failed: " + (e?.message || JSON.stringify(e)));
+      setErrorMsg("Upload failed: " + (e?.message || JSON.stringify(e)));
     } finally {
       setIsPublishing(false);
     }
@@ -134,9 +136,18 @@ export function Create() {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="w-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 p-4 rounded-xl text-center font-semibold"
+              className="w-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 p-4 rounded-xl text-center font-semibold mb-4"
             >
               Successfully published {postType}!
+            </motion.div>
+          )}
+          {errorMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="w-full bg-rose-500/20 border border-rose-500/50 text-rose-400 p-4 rounded-xl text-center font-semibold mb-4"
+            >
+              {errorMsg}
             </motion.div>
           )}
         </AnimatePresence>

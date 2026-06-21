@@ -79,7 +79,11 @@ export function CallOverlay() {
     if (remoteVideoRef.current && currentCall.remoteStream) {
       remoteVideoRef.current.srcObject = currentCall.remoteStream;
     }
-  }, [currentCall.remoteStream, isMinimized, currentCall.status]);
+    const audioEl = document.getElementById("remote-audio") as HTMLAudioElement;
+    if (audioEl && currentCall.remoteStream && currentCall.type === "audio") {
+      audioEl.srcObject = currentCall.remoteStream;
+    }
+  }, [currentCall.remoteStream, isMinimized, currentCall.status, currentCall.type]);
 
   if (currentCall.status === "idle") return null;
 
@@ -92,6 +96,7 @@ export function CallOverlay() {
   if (isMinimized) {
     return (
       <AnimatePresence>
+        {currentCall.type === "audio" && <audio id="remote-audio" autoPlay playsInline />}
         <motion.div
           initial={{ opacity: 0, y: 50, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -166,6 +171,7 @@ export function CallOverlay() {
 
   return (
     <AnimatePresence>
+      {currentCall.type === "audio" && <audio id="remote-audio" autoPlay playsInline />}
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}

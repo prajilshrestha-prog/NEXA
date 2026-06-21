@@ -18,8 +18,10 @@ import {
   Film,
   FolderOpen,
   User as UserIcon,
-  Bookmark
-, Play, Music } from "lucide-react";
+  Users,
+  Bookmark,
+  Repeat2,
+  Play, Music } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppStore, User } from "../store/useAppStore";
 import { useCommunicationStore } from "../store/communicationStore";
@@ -44,6 +46,8 @@ export function Profile() {
   );
   const toggleFollow = useAppStore((state) => state.toggleFollow);
   const following = useAppStore((state) => state.following);
+  const closeFriends = useAppStore((state) => state.closeFriends || {});
+  const toggleCloseFriend = useAppStore((state) => state.toggleCloseFriend);
 
   const friendRequests = useAppStore((state) => state.friendRequests);
   const sendFriendRequest = useAppStore((state) => state.sendFriendRequest);
@@ -62,17 +66,42 @@ export function Profile() {
   const [displayUser, setDisplayUser] = useState<User | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [followersList, setFollowersList] = useState<User[]>([]);
+  const [followingList, setFollowingList] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"posts"|"reels"|"portfolio"|"about"|"saved">("posts");
+  const [activeTab, setActiveTab] = useState<"posts"|"reels"|"portfolio"|"about"|"saved"|"reposts"|"followers"|"following">("posts");
 
   useEffect(() => {
     const fetchFollowStats = async (userId: string) => {
        const [followersRes, followingRes] = await Promise.all([
-          supabase.from("follows").select("id", { count: "exact", head: true }).eq("following_id", userId),
-          supabase.from("follows").select("id", { count: "exact", head: true }).eq("follower_id", userId)
+          supabase.from("follows").select("id, profiles!follower_id(*)").eq("following_id", userId),
+          supabase.from("follows").select("id, profiles!following_id(*)").eq("follower_id", userId)
        ]);
-       if (!followersRes.error) setFollowerCount(followersRes.count || 0);
-       if (!followingRes.error) setFollowingCount(followingRes.count || 0);
+       
+       if (!followersRes.error) {
+         setFollowerCount(followersRes.data.length);
+         setFollowersList(followersRes.data.map(d => ({
+           id: d.profiles.id,
+           email: d.profiles.email || "",
+           username: d.profiles.username,
+           name: d.profiles.name || d.profiles.username,
+           avatar: d.profiles.avatar,
+           bio: d.profiles.bio,
+           website: d.profiles.website,
+         })) as User[]);
+       }
+       if (!followingRes.error) {
+         setFollowingCount(followingRes.data.length);
+         setFollowingList(followingRes.data.map(d => ({
+           id: d.profiles.id,
+           email: d.profiles.email || "",
+           username: d.profiles.username,
+           name: d.profiles.name || d.profiles.username,
+           avatar: d.profiles.avatar,
+           bio: d.profiles.bio,
+           website: d.profiles.website,
+         })) as User[]);
+       }
     };
 
     const loadProfile = async () => {
@@ -174,7 +203,6 @@ export function Profile() {
       setBannerFile(null);
     } catch (e: any) {
       console.error(e);
-      alert(e.message || "Save failed");
     } finally {
       setIsSaving(false);
     }
@@ -191,7 +219,7 @@ export function Profile() {
       setActiveConversation(conversationId);
       navigate(`/messages/${conversationId}`);
     } else {
-      alert("Conversation creation failed. Please try again.");
+      console.error("Conversation creation failed.");
     }
   };
 
@@ -477,6 +505,17 @@ export function Profile() {
                   {isFollowing ? "Following" : "Follow"}
                 </button>
                 <button
+                  onClick={() => toggleCloseFriend?.(displayUser.id)}
+                  title="Toggle Close Friend"
+                  className={`px-4 py-3 rounded-xl transition-colors border ${
+                     closeFriends[displayUser.id] 
+                       ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30" 
+                       : "bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  ⭐
+                </button>
+                <button
                   onClick={handleMessage}
                   className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors border border-white/10"
                 >
@@ -565,35 +604,38 @@ export function Profile() {
           </div>
           <div className="md:col-span-4">
              <div className="flex gap-8 md:justify-end">
-                <div className="flex flex-col">
-                  <span className="text-2xl font-bold text-white">{followerCount}</span>
-                  <span className="text-xs text-white/50 font-medium">Followers</span>
+                <div onClick={() => setActiveTab("followers" as any)} className="flex flex-col cursor-pointer group">
+                  <span className="text-2xl font-bold text-white group-hover:text-indigo-400 transition-colors">{followerCount}</span>
+                  <span className="text-xs text-white/50 font-medium group-hover:text-indigo-400 transition-colors">Followers</span>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-2xl font-bold text-white">{followingCount}</span>
-                  <span className="text-xs text-white/50 font-medium">Following</span>
+                <div onClick={() => setActiveTab("following" as any)} className="flex flex-col cursor-pointer group">
+                  <span className="text-2xl font-bold text-white group-hover:text-indigo-400 transition-colors">{followingCount}</span>
+                  <span className="text-xs text-white/50 font-medium group-hover:text-indigo-400 transition-colors">Following</span>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-2xl font-bold text-white">{userPosts.length + userReels.length}</span>
-                  <span className="text-xs text-white/50 font-medium">Posts</span>
+                <div onClick={() => setActiveTab("posts" as any)} className="flex flex-col cursor-pointer group">
+                  <span className="text-2xl font-bold text-white group-hover:text-indigo-400 transition-colors">{userPosts.length + userReels.length}</span>
+                  <span className="text-xs text-white/50 font-medium group-hover:text-indigo-400 transition-colors">Posts</span>
                 </div>
              </div>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-6 border-b border-white/10 mb-8 overflow-x-auto scroolbar-hide">
+        <div className="flex items-center gap-6 border-b border-white/10 mb-8 overflow-x-auto scrollbar-hide py-2">
           {[
             { id: "posts", icon: Grid, label: "Posts" },
             { id: "reels", icon: Film, label: "Reels" },
             { id: "portfolio", icon: FolderOpen, label: "Portfolio" },
             { id: "about", icon: UserIcon, label: "About" },
+            { id: "reposts", icon: Repeat2, label: "Reposts" },
+            { id: "followers", icon: Users, label: "Followers" },
+            { id: "following", icon: Users, label: "Following" },
             ...(isOwnProfile ? [{ id: "saved", icon: Bookmark, label: "Saved" }] : [])
           ].map(tab => (
              <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 pb-4 px-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id ? "border-white text-white" : "border-transparent text-white/50 hover:text-white"}`}
+                className={`flex items-center gap-2 pb-2 px-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id ? "border-white text-white" : "border-transparent text-white/50 hover:text-white"}`}
              >
                 <tab.icon size={16} /> {tab.label}
              </button>
@@ -695,6 +737,25 @@ export function Profile() {
              </div>
            )}
 
+           {activeTab === "reposts" && (
+             <div className="space-y-8">
+               <div>
+                  <h3 className="text-lg font-bold text-white mb-4">Reposts</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {posts.filter(p => isOwnProfile ? useAppStore.getState().repostedPosts[p.id] : p.userId === displayUser?.id && p.originalPostId).length > 0 ? (
+                      posts.filter(p => isOwnProfile ? useAppStore.getState().repostedPosts[p.id] : p.userId === displayUser?.id && p.originalPostId).map(post => (
+                        <PostCard key={post.id} post={post} />
+                      ))
+                    ) : (
+                      <div className="col-span-full py-12 text-center text-white/50 bg-white/5 rounded-3xl border border-white/5">
+                        No reposts yet.
+                      </div>
+                    )}
+                  </div>
+               </div>
+             </div>
+           )}
+
            {activeTab === "saved" && isOwnProfile && (
              <div className="space-y-8">
                <div>
@@ -746,6 +807,58 @@ export function Profile() {
                     )}
                   </div>
                </div>
+             </div>
+           )}
+
+           {activeTab === "reposts" && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {posts.filter((p) => p.originalPostId && p.userId === displayUser?.id).length > 0 ? (
+                   posts.filter((p) => p.originalPostId && p.userId === displayUser?.id).map(post => (
+                     <div key={post.id} onClick={() => setSelectedPost(post)} className="cursor-pointer">
+                        <PostCard post={post} />
+                     </div>
+                   ))
+                ) : (
+                  <div className="col-span-full py-12 text-center text-white/50 bg-white/5 rounded-3xl border border-white/5">
+                    No reposts found.
+                  </div>
+                )}
+             </div>
+           )}
+
+           {activeTab === "followers" && (
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {followersList.length > 0 ? followersList.map(u => (
+                  <div key={u.id} className="flex items-center gap-4 bg-white/5 p-4 rounded-xl border border-white/5 cursor-pointer hover:bg-white/10 transition-colors" onClick={() => navigate(`/u/${u.username}`)}>
+                    <img src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`} className="w-12 h-12 rounded-full object-cover" />
+                    <div>
+                      <h4 className="font-bold text-white">{u.name}</h4>
+                      <p className="text-sm text-white/50">@{u.username}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="col-span-full py-12 text-center text-white/50 bg-white/5 rounded-3xl border border-white/5">
+                    No followers yet.
+                  </div>
+                )}
+             </div>
+           )}
+
+           {activeTab === "following" && (
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {followingList.length > 0 ? followingList.map(u => (
+                  <div key={u.id} className="flex items-center gap-4 bg-white/5 p-4 rounded-xl border border-white/5 cursor-pointer hover:bg-white/10 transition-colors" onClick={() => navigate(`/u/${u.username}`)}>
+                    <img src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`} className="w-12 h-12 rounded-full object-cover" />
+                    <div>
+                      <h4 className="font-bold text-white">{u.name}</h4>
+                      <p className="text-sm text-white/50">@{u.username}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="col-span-full py-12 text-center text-white/50 bg-white/5 rounded-3xl border border-white/5">
+                    Not following anyone yet.
+                  </div>
+                )}
              </div>
            )}
         </div>

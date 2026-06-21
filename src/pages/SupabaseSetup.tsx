@@ -29,14 +29,18 @@ create table public.profiles (
 create table public.posts (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
-  title text,
-  content text,
-  image text,
+  caption text,
+  media_url text,
   media_type text,
+  music_title text,
+  music_artist text,
+  music_url text,
   original_post_id uuid references public.posts(id) on delete cascade,
   likes integer default 0,
   comments integer default 0,
   reposts integer default 0,
+  views integer default 0,
+  saves integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
@@ -50,6 +54,8 @@ create table public.reels (
   likes integer default 0,
   comments integer default 0,
   reposts integer default 0,
+  views integer default 0,
+  saves integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
@@ -153,6 +159,14 @@ create table public.follows (
   unique(follower_id, following_id)
 );
 
+create table public.close_friends (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  friend_id uuid references public.profiles(id) on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  unique(user_id, friend_id)
+);
+
 create table public.friend_requests (
   id uuid default gen_random_uuid() primary key,
   sender_id uuid references public.profiles(id) on delete cascade not null,
@@ -185,6 +199,7 @@ create table public.messages (
   sender_id uuid references public.profiles(id) on delete cascade not null,
   content text,
   image text,
+  voice text,
   read boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
@@ -283,6 +298,7 @@ alter table public.reel_reposts enable row level security;
 alter table public.saved_posts enable row level security;
 alter table public.saved_reels enable row level security;
 alter table public.follows enable row level security;
+alter table public.close_friends enable row level security;
 alter table public.friend_requests enable row level security;
 alter table public.conversations enable row level security;
 alter table public.conversation_participants enable row level security;
@@ -345,13 +361,36 @@ create policy "Reposts viewable by everyone." on reposts for select using (true)
 create policy "Users can insert reposts" on reposts for insert with check (auth.uid() = user_id);
 create policy "Users can delete reposts" on reposts for delete using (auth.uid() = user_id);
 
-create policy "Saves viewable by everyone." on saves for select using (auth.uid() = user_id);
-create policy "Users can insert saves" on saves for insert with check (auth.uid() = user_id);
-create policy "Users can delete saves" on saves for delete using (auth.uid() = user_id);
+create policy "Saved posts viewable by everyone." on saved_posts for select using (auth.uid() = user_id);
+create policy "Users can insert saved posts" on saved_posts for insert with check (auth.uid() = user_id);
+create policy "Users can delete saved posts" on saved_posts for delete using (auth.uid() = user_id);
+
+create policy "Liked reels viewable by everyone." on liked_reels for select using (true);
+create policy "Users can insert liked reels" on liked_reels for insert with check (auth.uid() = user_id);
+create policy "Users can delete liked reels" on liked_reels for delete using (auth.uid() = user_id);
+
+create policy "Saved reels viewable by everyone." on saved_reels for select using (auth.uid() = user_id);
+create policy "Users can insert saved reels" on saved_reels for insert with check (auth.uid() = user_id);
+create policy "Users can delete saved reels" on saved_reels for delete using (auth.uid() = user_id);
+
+create policy "Reel comments viewable by everyone." on reel_comments for select using (true);
+create policy "Users can insert reel comments" on reel_comments for insert with check (auth.uid() = user_id);
+create policy "Users can delete reel comments" on reel_comments for delete using (auth.uid() = user_id);
+
+create policy "Reel reposts viewable by everyone." on reel_reposts for select using (true);
+create policy "Users can insert reel reposts" on reel_reposts for insert with check (auth.uid() = user_id);
+create policy "Users can delete reel reposts" on reel_reposts for delete using (auth.uid() = user_id);
+
+create policy "Users can update own reels." on reels for update using (auth.uid() = user_id);
+create policy "Users can delete own reels." on reels for delete using (auth.uid() = user_id);
 
 create policy "Follows viewable by everyone." on follows for select using (true);
 create policy "Users can insert follows" on follows for insert with check (auth.uid() = follower_id);
 create policy "Users can delete follows" on follows for delete using (auth.uid() = follower_id);
+
+create policy "Close friends viewable by owner." on close_friends for select using (auth.uid() = user_id);
+create policy "Users can insert close friends" on close_friends for insert with check (auth.uid() = user_id);
+create policy "Users can delete close friends" on close_friends for delete using (auth.uid() = user_id);
 
 create policy "Users can manage their friend requests" on friend_requests for all using (auth.uid() = sender_id or auth.uid() = receiver_id);
 
@@ -399,7 +438,114 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-// 11. Enable realtime for critical tables
+
+-- Post Counters Triggers
+create or replace function update_post_likes() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update posts set likes = likes + 1 where id = new.post_id;
+  elsif tg_op = 'DELETE' then
+    update posts set likes = greatest(0, likes - 1) where id = old.post_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+
+create trigger trigger_post_likes
+after insert or delete on likes for each row execute procedure update_post_likes();
+
+create or replace function update_post_comments() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update posts set comments = comments + 1 where id = new.post_id;
+  elsif tg_op = 'DELETE' then
+    update posts set comments = greatest(0, comments - 1) where id = old.post_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+
+create trigger trigger_post_comments
+after insert or delete on comments for each row execute procedure update_post_comments();
+
+create or replace function update_post_reposts() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update posts set reposts = reposts + 1 where id = new.post_id;
+  elsif tg_op = 'DELETE' then
+    update posts set reposts = greatest(0, reposts - 1) where id = old.post_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+
+create trigger trigger_post_reposts
+after insert or delete on reposts for each row execute procedure update_post_reposts();
+
+create or replace function update_post_saves() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update posts set saves = saves + 1 where id = new.post_id;
+  elsif tg_op = 'DELETE' then
+    update posts set saves = greatest(0, saves - 1) where id = old.post_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+
+create trigger trigger_post_saves
+after insert or delete on saved_posts for each row execute procedure update_post_saves();
+
+-- Reel Counters Triggers
+create or replace function update_reel_likes() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update reels set likes = likes + 1 where id = new.reel_id;
+  elsif tg_op = 'DELETE' then
+    update reels set likes = greatest(0, likes - 1) where id = old.reel_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+create trigger a_trigger_reel_likes after insert or delete on liked_reels for each row execute procedure update_reel_likes();
+
+create or replace function update_reel_comments() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update reels set comments = comments + 1 where id = new.reel_id;
+  elsif tg_op = 'DELETE' then
+    update reels set comments = greatest(0, comments - 1) where id = old.reel_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+create trigger a_trigger_reel_comments after insert or delete on reel_comments for each row execute procedure update_reel_comments();
+
+create or replace function update_reel_reposts() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update reels set reposts = reposts + 1 where id = new.reel_id;
+  elsif tg_op = 'DELETE' then
+    update reels set reposts = greatest(0, reposts - 1) where id = old.reel_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+create trigger a_trigger_reel_reposts after insert or delete on reel_reposts for each row execute procedure update_reel_reposts();
+
+create or replace function update_reel_saves() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update reels set saves = saves + 1 where id = new.reel_id;
+  elsif tg_op = 'DELETE' then
+    update reels set saves = greatest(0, saves - 1) where id = old.reel_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer;
+create trigger a_trigger_reel_saves after insert or delete on saved_reels for each row execute procedure update_reel_saves();
+
+-- 11. Enable realtime for critical tables
 alter publication supabase_realtime add table posts, comments, reels, profiles, likes, follows, friend_requests, notifications, conversations, conversation_participants, messages, typing_status, call_sessions, webrtc_signals, stories, story_views, story_reactions, notes, user_presence;
 `;
 

@@ -9,6 +9,7 @@ import { Shell } from "./components/layout/Shell";
 import { Auth } from "./pages/Auth";
 import { SupabaseSetup } from "./pages/SupabaseSetup";
 import { UpdatePassword } from "./pages/UpdatePassword";
+import { PostPage } from "./pages/PostPage";
 import { useAppStore } from "./store/useAppStore";
 import { hasSupabaseConfig, supabase } from "./lib/supabase";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -192,6 +193,7 @@ export default function App() {
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/u/:username" element={<Profile />} />
+                  <Route path="/post/:id" element={<PostPage />} />
                   <Route path="/portfolio" element={<Portfolio />} />
                   <Route path="/creator-hub" element={<CreatorHub />} />
                   <Route path="/opportunities" element={<Opportunities />} />

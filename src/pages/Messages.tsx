@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
+import { uploadMedia } from "../lib/upload";
 import { useCommunicationStore } from "../store/communicationStore";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
@@ -49,6 +50,10 @@ export function Messages() {
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupSelectedUsers, setGroupSelectedUsers] = useState<string[]>([]);
 
   useEffect(() => {
     fetchConversations();
@@ -93,10 +98,82 @@ export function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeMessages]);
 
-  const handleSend = () => {
-    if (!inputText.trim() || !activeConversationId) return;
-    sendMessage(activeConversationId, inputText);
-    setInputText("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleSend = async (overrideText?: string, image?: string, voice?: string) => {
+    const textToSend = overrideText !== undefined ? overrideText : inputText.trim();
+    if ((!textToSend && !image && !voice) || !activeConversationId) return;
+    try {
+      await sendMessage(activeConversationId, { content: textToSend, image, voice });
+      setInputText("");
+    } catch (e: any) {
+      console.error("Failed to send", e);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && activeConversationId) {
+      try {
+        setIsUploading(true);
+        const file = e.target.files[0];
+        const publicUrl = await uploadMedia(file, "media", () => {});
+        await handleSend("", publicUrl, undefined);
+      } catch (err: any) {
+        console.error("Upload failed", err);
+      } finally {
+        setIsUploading(false);
+        e.target.value = ''; // Reset input to allow attaching the same file again
+      }
+    }
+  };
+
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const handleVoiceUpload = async () => {
+    if (isRecording) {
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecording(false);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach(track => track.stop());
+        
+        try {
+          setIsUploading(true);
+          const file = new File([audioBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+          const publicUrl = await uploadMedia(file, "media", () => {});
+          await handleSend("", undefined, publicUrl);
+        } catch (err: any) {
+          console.error("Voice upload failed", err);
+        } finally {
+          setIsUploading(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Microphone access denied", err);
+    }
   };
 
   let typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -156,36 +233,9 @@ export function Messages() {
               className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
               title="Establish Group Sync"
               onClick={() => {
-                const name = window.prompt("Enter Group Matrix Name:");
-                if (name) {
-                  // Get all friends to invite
-                  // For now, let's just create an empty group and we can add later, or we just prompt for usernames
-                  const usernames = window.prompt(
-                    "Enter comma-separated usernames to invite (leave empty for none):",
-                  );
-                  if (usernames !== null) {
-                    const names = usernames
-                      .split(",")
-                      .map((u) => u.trim())
-                      .filter(Boolean);
-                    const userIds = names
-                      .map(
-                        (n) =>
-                          Object.values(users).find((u) => u.username === n)
-                            ?.id,
-                      )
-                      .filter(Boolean) as string[];
-                    useCommunicationStore
-                      .getState()
-                      .createGroupConversation(name, userIds)
-                      .then((convId) => {
-                        if (convId) {
-                          setActiveConversation(convId);
-                          navigate(`/messages/${convId}`);
-                        }
-                      });
-                  }
-                }
+                setGroupName("");
+                setGroupSelectedUsers([]);
+                setIsGroupModalOpen(true);
               }}
             >
               <Plus size={18} />
@@ -416,15 +466,16 @@ export function Messages() {
               ) : activePartner ? (
                 <>
                   <img
+                    onClick={() => navigate(`/u/${activePartner.username || activePartner.id}`)}
                     src={
                       activePartner.avatar ||
                       `https://api.dicebear.com/7.x/avataaars/svg?seed=${activePartner.id}`
                     }
                     alt={activePartner.name}
-                    className="w-10 h-10 rounded-full object-cover border border-white/20"
+                    className="w-10 h-10 rounded-full object-cover border border-white/20 cursor-pointer"
                   />
                   <div>
-                    <h3 className="font-bold text-white text-sm md:text-base">
+                    <h3 onClick={() => navigate(`/u/${activePartner.username || activePartner.id}`)} className="font-bold text-white text-sm md:text-base cursor-pointer hover:underline">
                       {activePartner.name}
                     </h3>
                     <p
@@ -475,14 +526,24 @@ export function Messages() {
                       View Profile
                     </button>
                   )}
-                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => alert("Chat muted")}>
+                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => {
+                      // Stub local action mute
+                      console.log("Chat muted");
+                      document.dispatchEvent(new CustomEvent('nav-alert', { detail: 'Chat muted' }));
+                  }}>
                     Mute Chat
                   </button>
-                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => alert("Chat archived")}>
+                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => {
+                      console.log("Chat archived");
+                      document.dispatchEvent(new CustomEvent('nav-alert', { detail: 'Chat archived' }));
+                  }}>
                     Archive Chat
                   </button>
                   {activePartner && (
-                    <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => alert("User blocked")}>
+                    <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-white/80 transition-colors" onClick={() => {
+                       console.log("User blocked");
+                       document.dispatchEvent(new CustomEvent('nav-alert', { detail: 'User blocked' }));
+                    }}>
                       Block User
                     </button>
                   )}
@@ -499,7 +560,10 @@ export function Messages() {
                   >
                     Delete Conversation
                   </button>
-                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-rose-400 transition-colors" onClick={() => alert("User reported")}>
+                  <button className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-rose-400 transition-colors" onClick={() => {
+                     console.log("User reported");
+                     document.dispatchEvent(new CustomEvent('nav-alert', { detail: 'User reported' }));
+                  }}>
                     Report User
                   </button>
                 </div>
@@ -541,11 +605,12 @@ export function Messages() {
                     >
                       {!isMine && sender && (
                         <img
+                          onClick={() => navigate(`/u/${sender.username || sender.id}`)}
                           src={
                             sender.avatar ||
                             `https://api.dicebear.com/7.x/avataaars/svg?seed=${sender.id}`
                           }
-                          className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-auto"
+                          className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-auto cursor-pointer"
                           alt="Avatar"
                         />
                       )}
@@ -553,6 +618,12 @@ export function Messages() {
                         <div
                           className={`p-4 rounded-2xl md:rounded-3xl ${isMine ? "bg-indigo-600 rounded-br-sm" : "glass border border-white/10 rounded-bl-sm"} shadow-lg`}
                         >
+                          {msg.image && (
+                            <img src={msg.image} className="w-full max-w-sm rounded-xl mb-2 object-cover" alt="Attachment" />
+                          )}
+                          {msg.voice && (
+                            <audio src={msg.voice} controls className="mb-2 max-w-[200px]" />
+                          )}
                           <p className="text-sm text-white/90 leading-relaxed break-words whitespace-pre-wrap">
                             {msg.content}
                           </p>
@@ -638,18 +709,16 @@ export function Messages() {
                   className="flex-1 bg-transparent border-none text-white text-sm max-h-32 min-h-[44px] py-3 focus:outline-none resize-none placeholder:text-white/30 scrollbar-hide"
                 />
                 <div className="flex gap-2">
-                  <button onClick={() => alert("Voice messaging coming in next release!")} className="p-3 text-white/50 hover:text-white transition-colors">
-                    <Mic size={20} />
+                  <button onClick={handleVoiceUpload} disabled={isUploading} className={`p-3 transition-colors rounded-full ${isRecording ? 'text-rose-500 bg-rose-500/20 animate-pulse' : 'text-white/50 hover:text-white bg-white/5'}`}>
+                    {isRecording ? <div className="w-5 h-5 rounded-sm bg-rose-500" /> : <Mic size={20} />}
                   </button>
-                  <label className="p-3 text-white/50 hover:text-white transition-colors cursor-pointer">
-                    <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => {
-                       if (e.target.files?.[0]) alert("Image attached: " + e.target.files[0].name);
-                    }}/>
-                    <FileImage size={20} />
+                  <label className={`p-3 text-white/50 hover:text-white transition-colors bg-white/5 rounded-full ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                    <input type="file" className="hidden" accept="image/*,video/*" disabled={isUploading} onChange={handleFileUpload}/>
+                    {isUploading ? <Loader2 size={20} className="animate-spin" /> : <FileImage size={20} />}
                   </label>
                   <button
-                    onClick={handleSend}
-                    disabled={!inputText.trim()}
+                    onClick={() => handleSend()}
+                    disabled={!inputText.trim() && !isUploading}
                     className="p-3 bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:bg-indigo-500 text-white rounded-full transition-colors flex items-center justify-center"
                   >
                     <Send size={18} className="translate-x-0.5" />
@@ -678,6 +747,79 @@ export function Messages() {
           </p>
         </div>
       )}
+
+      {/* Group Creation Modal */}
+      <AnimatePresence>
+        {isGroupModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-[var(--color-nexa-dark)] w-full max-w-md rounded-2xl border border-white/10 flex flex-col overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-white/5">
+                <h3 className="font-bold text-white text-lg">Create Group Matrix</h3>
+                <button onClick={() => setIsGroupModalOpen(false)} className="p-2 text-white/50 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-4 flex flex-col gap-4">
+                 <input
+                    type="text"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="Enter Group Name..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
+                 />
+                 
+                 <div>
+                    <h4 className="text-white/50 text-xs font-mono uppercase mb-2 ml-1">Select Entities</h4>
+                    <div className="max-h-60 overflow-y-auto space-y-1 scrollbar-hide pr-2">
+                       {Object.values(users).filter(u => u.id !== currentUser.id).map(user => {
+                          const isSelected = groupSelectedUsers.includes(user.id);
+                          return (
+                             <div 
+                                key={user.id} 
+                                onClick={() => setGroupSelectedUsers(prev => isSelected ? prev.filter(id => id !== user.id) : [...prev, user.id])}
+                                className={`flex flex-row items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${isSelected ? 'bg-indigo-500/20 border-indigo-500/50' : 'bg-transparent border-transparent hover:bg-white/5'}`}
+                             >
+                                <img src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="avatar" className="w-10 h-10 rounded-full object-cover" />
+                                <div>
+                                   <h4 className="text-sm font-bold text-white">{user.name}</h4>
+                                   <p className="text-xs text-white/50">@{user.username}</p>
+                                </div>
+                             </div>
+                          )
+                       })}
+                    </div>
+                 </div>
+                 
+                 <button 
+                    disabled={!groupName.trim() || groupSelectedUsers.length === 0}
+                    onClick={async () => {
+                       const convId = await useCommunicationStore.getState().createGroupConversation(groupName.trim(), groupSelectedUsers);
+                       if (convId) {
+                          setActiveConversation(convId);
+                          navigate(`/messages/${convId}`);
+                          setIsGroupModalOpen(false);
+                       }
+                    }}
+                    className="w-full py-3 bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:bg-indigo-500 text-white font-bold tracking-widest rounded-xl transition-colors mt-2 uppercase text-sm"
+                 >
+                    Initialize Group
+                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

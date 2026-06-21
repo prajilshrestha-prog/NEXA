@@ -40,7 +40,6 @@ class WebRTCManager {
       });
     } catch (e: any) {
       console.error("Failed to acquire media", e);
-      alert("Could not access camera/microphone: " + e.message + "\n\nPlease ensure permissions are granted.");
       useCommunicationStore.getState().endCall();
     }
   }
@@ -88,18 +87,27 @@ class WebRTCManager {
     // Handle remote stream
     pc.ontrack = (event) => {
       const state = useCommunicationStore.getState();
-      const currentRemoteStream = state.currentCall.remoteStream;
+      let stream = state.currentCall.remoteStream;
       
-      if (currentRemoteStream) {
+      if (!stream) {
+         stream = new MediaStream();
+      } else {
+         stream = new MediaStream(stream.getTracks());
+      }
+      
+      if (event.streams && event.streams[0]) {
          event.streams[0].getTracks().forEach(track => {
-            if (!currentRemoteStream.getTracks().find(t => t.id === track.id)) {
-               currentRemoteStream.addTrack(track);
+            if (!stream!.getTracks().find(t => t.id === track.id)) {
+               stream!.addTrack(track);
             }
          });
-         state.setRemoteStream(currentRemoteStream); // trigger re-render
-      } else {
-         state.setRemoteStream(event.streams[0]);
+      } else if (event.track) {
+         if (!stream!.getTracks().find(t => t.id === event.track.id)) {
+            stream!.addTrack(event.track);
+         }
       }
+      
+      state.setRemoteStream(stream);
     };
 
     // Handle ICE candidates

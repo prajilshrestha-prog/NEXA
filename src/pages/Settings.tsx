@@ -35,6 +35,7 @@ export function Settings() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
 
   useEffect(() => {
     if (currentUser) {
@@ -86,10 +87,12 @@ export function Settings() {
 
       setAvatarFile(null);
       setBannerFile(null);
+      setStatusMsg("Profile updated successfully!");
+      setTimeout(() => setStatusMsg(""), 3000);
     } catch (e) {
       console.error(e);
-      // Fallback alert
-      alert("Save failed, check console for details");
+      setStatusMsg("Save failed. Check console.");
+      setTimeout(() => setStatusMsg(""), 3000);
     } finally {
       setIsSaving(false);
     }
@@ -149,6 +152,11 @@ export function Settings() {
 
       {/* Main Content Area */}
       <div className="flex-1 max-w-4xl space-y-8 pb-12">
+        {statusMsg && (
+          <div className="bg-indigo-500/20 border border-indigo-500/50 text-indigo-200 px-6 py-4 rounded-2xl text-sm font-medium animate-pulse">
+            {statusMsg}
+          </div>
+        )}
         <motion.div
           key={activeTab}
           initial={{ opacity: 0, y: 20 }}
@@ -303,11 +311,13 @@ export function Settings() {
                          if (pwd && pwd.length >= 6) {
                            const { supabase } = await import("../lib/supabase");
                            const { error } = await supabase.auth.updateUser({ password: pwd });
-                           if (error) alert(error.message);
-                           else alert("Password updated successfully");
+                           if (error) setStatusMsg(error.message);
+                           else setStatusMsg("Password updated successfully");
+                           setTimeout(() => setStatusMsg(""), 3000);
                            (e.target as HTMLFormElement).reset();
                          } else {
-                           alert("Password must be at least 6 characters.");
+                           setStatusMsg("Password must be at least 6 characters.");
+                           setTimeout(() => setStatusMsg(""), 3000);
                          }
                        }}
                      >
@@ -349,7 +359,7 @@ export function Settings() {
                         const userId = useAppStore.getState().currentUser?.id;
                         if (userId) {
                            await supabase.from("profiles").delete().eq('id', userId);
-                           alert("Account Data Deleted");
+                           console.log("Account Data Deleted");
                            await supabase.auth.signOut();
                            useAppStore.getState().setCurrentUser(null);
                         }

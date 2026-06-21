@@ -22,6 +22,8 @@ export interface Message {
   conversationId: string;
   senderId: string;
   content: string;
+  image?: string;
+  voice?: string;
   createdAt: string;
   read: boolean;
 }
@@ -67,7 +69,7 @@ interface CommunicationState {
   setActiveConversation: (conversationId: string) => void;
 
   fetchMessages: (conversationId: string) => Promise<void>;
-  sendMessage: (conversationId: string, content: string) => Promise<void>;
+  sendMessage: (conversationId: string, payload: { content?: string, image?: string, voice?: string }) => Promise<void>;
   markAsRead: (conversationId: string) => Promise<void>;
 
   setTyping: (conversationId: string, isTyping: boolean) => void;
@@ -265,7 +267,7 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       }
     }
 
-    const payload = { type: "direct", is_group: false, created_by: userId };
+    const payload = { is_group: false };
     console.log("Current User", userId);
     console.log("Conversation Payload", payload);
 
@@ -299,13 +301,9 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     if (!userId) return null;
 
     const payload = {
-        type: "group",
         is_group: true,
-        name,
-        created_by: userId,
+        name
       };
-    console.log("Current User", userId);
-    console.log("Conversation Payload", payload);
 
     const { data: conv, error: convErr } = await supabase
       .from("conversations")
@@ -370,7 +368,9 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
         id: m.id,
         conversationId: m.conversation_id,
         senderId: m.sender_id,
-        content: m.content,
+        content: m.content || "",
+        image: m.image,
+        voice: m.voice,
         createdAt: m.created_at,
         read: m.read || false,
       }));
@@ -378,7 +378,7 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     }
   },
 
-  sendMessage: async (conversationId: string, content: string) => {
+  sendMessage: async (conversationId: string, payload) => {
     const userId = useAppStore.getState().currentUser?.id;
     if (!userId) return;
 
@@ -388,7 +388,9 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       id: tempId,
       conversationId,
       senderId: userId,
-      content,
+      content: payload.content || "",
+      image: payload.image,
+      voice: payload.voice,
       createdAt: new Date().toISOString(),
       read: false,
     };
@@ -402,7 +404,7 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
 
     const { data } = await supabase
       .from("messages")
-      .insert({ conversation_id: conversationId, sender_id: userId, content })
+      .insert({ conversation_id: conversationId, sender_id: userId, content: payload.content, image: payload.image, voice: payload.voice })
       .select()
       .maybeSingle();
 
@@ -456,25 +458,9 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     const userId = useAppStore.getState().currentUser?.id;
     if (!userId) return;
 
-    // Update table typing_status
-    if (isTyping) {
-      supabase
-        .from("typing_status")
-        .upsert({
-          conversation_id: conversationId,
-          user_id: userId,
-          is_typing: true,
-          updated_at: new Date().toISOString(),
-        })
-        .then();
-    } else {
-      supabase
-        .from("typing_status")
-        .delete()
-        .eq("conversation_id", conversationId)
-        .eq("user_id", userId)
-        .then();
-    }
+    import("./RealtimeManager").then((m) => {
+      m.realtimeManager.broadcastTyping(conversationId, isTyping);
+    });
   },
 
   updateTypingState: (
@@ -532,7 +518,6 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     console.log("CALL ROW CREATED", sessionRes.data, sessionRes.error);
     if (sessionRes.error) {
        console.error("Call Session Error:", sessionRes.error);
-       alert("Failed to initiate call: " + sessionRes.error.message);
     }
     const session = sessionRes.data;
 
@@ -600,6 +585,15 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       import("./WebRTCManager").then(({ wrtcManager }) => {
         wrtcManager.endCall(currentCall.partnerId);
       });
+      // Optionally log call length
+      const duration = currentCall.startedAt ? Math.round((Date.now() - currentCall.startedAt) / 1000) : 0;
+      if (currentCall.partnerId && currentCall.isCaller) {
+        get().getOrCreateDirectConversation(currentCall.partnerId).then((convId) => {
+           if (convId) {
+             get().sendMessage(convId, { content: `📞 Call ended (${duration} seconds)` });
+           }
+        });
+      }
     }
 
     set({

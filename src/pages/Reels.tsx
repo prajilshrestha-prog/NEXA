@@ -11,11 +11,13 @@ import {
   Loader2,
   Bookmark,
   Repeat,
-  X
+  X,
+  Eye
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { uploadMedia } from "../lib/upload";
 import { shareContent } from "../lib/share";
+import { useNavigate } from "react-router-dom";
 
 export function Reels() {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -36,6 +38,7 @@ export function Reels() {
   const repostedReels = useAppStore((state) => state.repostedReels) || {};
 
   const fetchReels = useAppStore((state) => state.fetchReels) || (async () => {});
+  const navigate = useNavigate();
   const fetchReelComments = useAppStore((state) => state.fetchReelComments) || (async () => {});
   const addReelComment = useAppStore((state) => state.addReelComment) || (async () => {});
   const deleteReelComment = useAppStore((state) => state.deleteReelComment) || (async () => {});
@@ -63,6 +66,12 @@ export function Reels() {
   useEffect(() => {
     fetchReels();
   }, [fetchReels]);
+
+  useEffect(() => {
+     if (reels.length > 0 && reels[activeIndex]) {
+        useAppStore.getState().viewReel(reels[activeIndex].id);
+     }
+  }, [activeIndex, reels.length]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -96,7 +105,6 @@ export function Reels() {
         if (containerRef.current) containerRef.current.scrollTop = 0;
       } catch (err) {
         console.error("Upload reel failed", err);
-        alert("Upload reel failed. Please check console.");
       } finally {
         setIsUploading(false);
       }
@@ -279,6 +287,20 @@ export function Reels() {
                     </button>
 
                     <button 
+                      className="flex flex-col items-center gap-1 group cursor-default"
+                    >
+                      <div className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 transition-colors">
+                        <Eye
+                          size={24}
+                          className="text-white/50"
+                        />
+                      </div>
+                      <span className="text-xs text-white/50 font-bold">
+                        {reel.views || 0}
+                      </span>
+                    </button>
+
+                    <button 
                       onClick={() => shareContent(`/reel/${reel.id}`, 'reel')}
                       className="flex flex-col items-center gap-1 group"
                     >
@@ -318,6 +340,13 @@ export function Reels() {
                                   <button onClick={() => shareContent(`/reel/${reel.id}`, 'reel')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Share</button>
                                   <button onClick={() => shareContent(`/reel/${reel.id}`, 'reel')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Copy Link</button>
                                   <button onClick={() => toggleSaveReel(reel.id)} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Save</button>
+                                  <button onClick={() => { const a = document.createElement('a'); a.href = reel.video; a.download = 'nexa-media'; a.click(); }} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Download</button>
+                                  <div className="h-px bg-white/10 my-1"></div>
+                                  <button onClick={() => useAppStore.getState().blockUser?.(reel.userId)} className="text-left px-4 py-2 hover:bg-white/5 text-rose-400 rounded font-medium transition-colors">Block User</button>
+                                  <button onClick={() => useAppStore.getState().reportContent?.(reel.id, 'reel')} className="text-left px-4 py-2 hover:bg-white/5 text-rose-400 rounded font-medium transition-colors">Report User</button>
+                                  <button onClick={() => console.log('Interested')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Interested</button>
+                                  <button onClick={() => console.log('Not Interested')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Not Interested</button>
+                                  <button onClick={() => navigate(`/u/${(user as any)?.username || (user as any)?.id}`)} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Go To Profile</button>
                                 </>
                               )}
                             </div>

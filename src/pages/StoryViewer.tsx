@@ -21,19 +21,29 @@ export function StoryViewer() {
   const story = stories[currentIndex];
   const user = story ? users[story.userId] : null;
 
+  const [hasReacted, setHasReacted] = useState(false);
+
   useEffect(() => {
     if (stories.length > 0 && id) {
       const actualIndex = stories.findIndex(s => s.id === id);
       if (actualIndex >= 0 && story?.id !== id) {
         setCurrentIndex(actualIndex);
         setProgress(0);
+        setHasReacted(false);
       }
     }
   }, [stories, id, story?.id]);
 
   useEffect(() => {
-     if (story) viewStory(story.id);
-  }, [story, viewStory]);
+     if (story && currentUser) {
+        viewStory(story.id);
+        import("../lib/supabase").then(({ supabase }) => {
+           supabase.from('story_reactions').select('*').eq('story_id', story.id).eq('user_id', currentUser.id).then(({ data }) => {
+              if (data && data.length > 0) setHasReacted(true);
+           });
+        });
+     }
+  }, [story, viewStory, currentUser]);
 
   useEffect(() => {
     if (!story || isPaused) return;
@@ -166,14 +176,14 @@ export function StoryViewer() {
                     e.stopPropagation();
                     setIsPaused(true);
                  }}
-                 onKeyDown={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                        const val = e.currentTarget.value.trim();
                        if (val) {
                           import("../store/communicationStore").then(async ({ useCommunicationStore }) => {
                              const convId = await useCommunicationStore.getState().getOrCreateDirectConversation(story.userId);
                              if (convId) {
-                                await useCommunicationStore.getState().sendMessage(convId, `[Replied to story]: ${val}`);
+                                await useCommunicationStore.getState().sendMessage(convId, { content: `[Replied to story]: ${val}` });
                                 navigate(`/messages/${convId}`);
                              }
                           });
@@ -182,17 +192,26 @@ export function StoryViewer() {
                  }}
                />
                <button 
-                  onClick={(e) => {
+                  disabled={hasReacted}
+                  onClick={async (e) => {
                     e.stopPropagation();
+                    if (hasReacted) return;
+                    setHasReacted(true);
+                    const { supabase } = await import("../lib/supabase");
+                    await supabase.from("story_reactions").insert({
+                      story_id: story.id,
+                      user_id: currentUser.id,
+                      reaction: "❤️"
+                    });
+                    
                     import("../store/communicationStore").then(async ({ useCommunicationStore }) => {
                        const convId = await useCommunicationStore.getState().getOrCreateDirectConversation(story.userId);
                        if (convId) {
-                          await useCommunicationStore.getState().sendMessage(convId, `❤️`);
-                          alert("Reaction sent!");
+                          await useCommunicationStore.getState().sendMessage(convId, { content: `❤️ [Reaction to story]` });
                        }
                     });
                   }}
-                  className="p-3 text-white hover:text-red-500 bg-black/50 rounded-full border border-white/20 backdrop-blur-md"
+                  className={`p-3 text-white rounded-full border backdrop-blur-md transition-colors active:scale-90 ${hasReacted ? 'bg-red-500/50 border-red-500 text-red-100' : 'hover:text-red-500 bg-black/50 border-white/20'}`}
                >
                   ❤️
                </button>

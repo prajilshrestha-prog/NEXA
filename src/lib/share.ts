@@ -19,11 +19,10 @@ export const shareContent = async (urlPath: string, displayType: string) => {
   
   try {
     await navigator.clipboard.writeText(fullUrl);
-    alert("Link copied");
+    console.log("Link copied");
     return { success: true, method: 'clipboard' };
   } catch (e) {
     console.error("Clipboard write failed:", e);
-    alert("Failed to copy link");
     return { success: false, method: 'clipboard' };
   }
 };

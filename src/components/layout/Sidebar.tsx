@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import {
   Home,
   Film,
@@ -59,14 +59,14 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-64 h-screen border-r border-[var(--color-glass-border)] bg-[var(--color-nexa-dark)]/40 backdrop-blur-3xl shrink-0 z-20 transition-colors duration-1000">
-      <div className="p-6 flex items-center gap-3">
+      <Link to="/" className="p-6 flex items-center gap-3 hover:opacity-80 transition-opacity">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[var(--color-nexa-accent)] to-[var(--color-nexa-accent-light)] flex items-center justify-center transition-colors">
           <Sparkles size={16} className="text-white" />
         </div>
         <span className="font-display font-bold text-2xl tracking-tight text-[var(--color-nexa-text)]">
           NEXA
         </span>
-      </div>
+      </Link>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-hide relative z-10">
         <div className="text-[10px] font-semibold text-[var(--color-nexa-accent)] uppercase tracking-[0.3em] mb-4 px-3 flex items-center gap-2">

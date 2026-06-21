@@ -28,6 +28,7 @@ import { shareContent } from "../lib/share";
 import { supabase } from "../lib/supabase";
 
 export const PostCard = ({ post }: { post: any }) => {
+  const navigate = useNavigate();
   const users = useAppStore((state) => state.users) || {};
   const currentUser = useAppStore((state) => state.currentUser);
   const likePost = useAppStore((state) => state.likePost) || (async () => {});
@@ -194,10 +195,13 @@ export const PostCard = ({ post }: { post: any }) => {
                         <button onClick={() => shareContent(`/post/${post.id}`, 'post')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Share</button>
                        <button onClick={() => shareContent(`/post/${post.id}`, 'post')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Copy Link</button>
                        <button onClick={() => toggleSave(post.id)} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Save</button>
+                       {postToRender.image && <button onClick={() => { const a = document.createElement('a'); a.href = postToRender.image!; a.download = 'nexa-media'; a.click(); }} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Download</button>}
                         <div className="h-px bg-white/10 my-1"></div>
-                        {/* Removed Mute */}
-                       {/* Removed Block */}
-                       {/* Removed Report 2 */}
+                       <button onClick={() => useAppStore.getState().blockUser?.(postToRender.userId)} className="text-left px-4 py-2 hover:bg-white/5 text-rose-400 rounded font-medium transition-colors">Block User</button>
+                       <button onClick={() => useAppStore.getState().reportContent?.(post.id, 'post')} className="text-left px-4 py-2 hover:bg-white/5 text-rose-400 rounded font-medium transition-colors">Report User</button>
+                       <button onClick={() => console.log('Interested')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Interested</button>
+                       <button onClick={() => console.log('Not Interested')} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Not Interested</button>
+                       <button onClick={() => navigate(`/u/${authorToRender?.username || authorToRender?.id}`)} className="text-left px-4 py-2 hover:bg-white/5 text-white/90 rounded font-medium transition-colors">Go To Profile</button>
                      </>
                    )}
                   </div>
@@ -298,6 +302,10 @@ export const PostCard = ({ post }: { post: any }) => {
             <Repeat2 size={18} />
             <span className="text-xs font-mono">{postToRender.reposts}</span>
           </button>
+          <div className="flex items-center gap-2 cursor-default text-white/50">
+            <Eye size={18} />
+            <span className="text-xs font-mono">{postToRender.views || 0}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -423,6 +431,8 @@ export function Home() {
     try {
       fetchPosts();
       useAppStore.getState().fetchReels();
+      useAppStore.getState().fetchStories();
+      useAppStore.getState().fetchNotes();
       fetchInteractions();
     } catch (e) {
       console.error("Fetch error:", e);

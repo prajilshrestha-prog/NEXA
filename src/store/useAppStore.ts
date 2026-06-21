@@ -58,6 +58,8 @@ export interface Post {
   likes: number;
   comments: number;
   reposts: number;
+  views: number;
+  saves: number;
   createdAt: string;
 }
 
@@ -78,6 +80,9 @@ export interface Reel {
   music: string;
   likes: number;
   comments: number;
+  reposts: number;
+  views: number;
+  saves: number;
   createdAt: string;
 }
 
@@ -147,6 +152,11 @@ interface AppState {
   savedReels: Record<string, boolean>;
   repostedReels: Record<string, boolean>;
   following: Record<string, boolean>;
+  closeFriends: Record<string, boolean>;
+  toggleCloseFriend: (userId: string) => Promise<void>;
+
+  blockUser?: (userId: string) => void;
+  reportContent?: (id: string, type: 'post' | 'reel') => void;
 
   setCurrentUser: (user: User | null) => void;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -176,7 +186,7 @@ interface AppState {
   fetchPosts: (cursor?: number) => Promise<void>;
   fetchReels: (cursor?: number) => Promise<void>;
   addPost: (
-    post: Omit<Post, "id" | "likes" | "comments" | "reposts" | "createdAt">,
+    post: Omit<Post, "id" | "likes" | "comments" | "reposts" | "views" | "saves" | "createdAt">,
   ) => Promise<void>;
   likePost: (postId: string) => Promise<void>;
   repostPost: (postId: string) => Promise<void>;
@@ -193,7 +203,9 @@ interface AppState {
   addReelComment: (reelId: string, content: string) => Promise<void>;
   deleteReelComment: (reelId: string, commentId: string) => Promise<void>;
 
-  addReel: (reel: Omit<Reel, "id" | "likes" | "comments" | "createdAt">) => Promise<void>;
+  addReel: (reel: Omit<Reel, "id" | "likes" | "comments" | "reposts" | "views" | "saves" | "createdAt">) => Promise<void>;
+  viewPost: (postId: string) => Promise<void>;
+  viewReel: (reelId: string) => Promise<void>;
   likeReel: (reelId: string) => Promise<void>;
   toggleSaveReel: (reelId: string) => Promise<void>;
   repostReel: (reelId: string) => Promise<void>;
@@ -224,6 +236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   savedReels: {},
   repostedReels: {},
   following: {},
+  closeFriends: {},
 
   setCurrentUser: (user) =>
     set((state) => ({
@@ -569,8 +582,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const savedReels: Record<string, boolean> = {};
     const repostedReels: Record<string, boolean> = {};
     const following: Record<string, boolean> = {};
+    const closeFriends: Record<string, boolean> = {};
 
-    const [likesRes, savedPostsRes, repostedPostsRes, likedReelsRes, savedReelsRes, repostedReelsRes, followsRes] = await Promise.all([
+    const [likesRes, savedPostsRes, repostedPostsRes, likedReelsRes, savedReelsRes, repostedReelsRes, followsRes, closeFriendsRes] = await Promise.all([
       supabase
         .from("likes")
         .select("post_id")
@@ -599,6 +613,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         .from("follows")
         .select("following_id")
         .eq("follower_id", state.currentUser.id),
+      supabase
+        .from("close_friends")
+        .select("friend_id")
+        .eq("user_id", state.currentUser.id),
     ]);
 
     if (likesRes.data) {
@@ -622,8 +640,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (followsRes.data) {
       followsRes.data.forEach((f) => (following[f.following_id] = true));
     }
+    if (closeFriendsRes.data) {
+      closeFriendsRes.data.forEach((f) => (closeFriends[f.friend_id] = true));
+    }
 
-    set({ likedPosts, savedPosts, repostedPosts, likedReels, savedReels, repostedReels, following });
+    set({ likedPosts, savedPosts, repostedPosts, likedReels, savedReels, repostedReels, following, closeFriends });
   },
 
   fetchStories: async () => {
@@ -642,7 +663,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         expiresAt: s.expires_at,
         createdAt: s.created_at,
       }));
-      set({ stories: mapped });
+      set(s => {
+         const newStories = [...mapped];
+         s.stories.forEach(st => {
+            if (!newStories.find(m => m.id === st.id)) {
+               newStories.push(st);
+            }
+         });
+         return { stories: newStories.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) };
+      });
       get().fetchProfiles(mapped.map((s) => s.userId));
     }
   },
@@ -668,7 +697,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         expiresAt: data.expires_at,
         createdAt: data.created_at,
       };
-      set(s => ({ stories: [newStory, ...s.stories] }));
+      set(s => {
+         if (s.stories.find(x => x.id === newStory.id)) return s;
+         return { stories: [newStory, ...s.stories] };
+      });
     }
   },
 
@@ -737,8 +769,16 @@ export const useAppStore = create<AppState>((set, get) => ({
        console.error("Error adding note:", error);
        set(s => ({ notes: s.notes.filter(n => n.id !== optimisticNote.id) }));
     } else if(data) {
-       set(s => ({ 
-           notes: s.notes.map(n => n.id === optimisticNote.id ? {
+       set(s => {
+          // If RealtimeManager already inserted it, we need to replace optimistic and deduplicate
+          const existsFromRealtime = s.notes.some(n => n.id === data.id);
+          let newNotes = s.notes;
+          
+          if (existsFromRealtime) {
+             // Remove optimistic, keep realtime one
+             newNotes = newNotes.filter(n => n.id !== optimisticNote.id);
+          } else {
+             newNotes = newNotes.map(n => n.id === optimisticNote.id ? {
                 id: data.id,
                 userId: data.user_id,
                 content: data.content,
@@ -746,9 +786,13 @@ export const useAppStore = create<AppState>((set, get) => ({
                 musicUrl: data.music_url,
                 gifUrl: data.gif_url,
                 expiresAt: data.expires_at,
-                createdAt: data.created_at,
-           } : n)
-       }));
+                views: 0,
+          saves: 0,
+          createdAt: data.created_at,
+             } : n);
+          }
+          return { notes: newNotes };
+       });
     }
   },
 
@@ -770,7 +814,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     if (error) {
        console.error(error);
-       alert("Posts Fetch Error: " + error.message);
     }
     console.log("POSTS FROM DB", data, error);
     if (data) {
@@ -787,6 +830,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         likes: p.likes || 0,
         comments: p.comments || 0,
         reposts: p.reposts || 0,
+        views: p.views || 0,
+        saves: p.saves || 0,
         createdAt: p.created_at,
       }));
 
@@ -839,7 +884,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error("addPost error:", error);
-      alert("Post Insert Error: " + error.message);
     }
 
     if (!error && data) {
@@ -872,7 +916,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       likedPosts: { ...state.likedPosts, [postId]: !isLiked },
       posts: state.posts.map((p) =>
-        p.id === postId ? { ...p, likes: p.likes + (isLiked ? -1 : 1) } : p,
+        p.id === postId ? { ...p, likes: Math.max(0, (p.likes || 0) + (isLiked ? -1 : 1)) } : p,
       ),
     }));
 
@@ -882,19 +926,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         .delete()
         .eq("post_id", postId)
         .eq("user_id", state.currentUser.id);
-      await supabase
-        .from("posts")
-        .update({ likes: Math.max(0, post.likes - 1) })
-        .eq("id", postId);
     } else {
       const { error } = await supabase
         .from("likes")
         .insert({ post_id: postId, user_id: state.currentUser.id });
       if (!error) {
-        await supabase
-          .from("posts")
-          .update({ likes: post.likes + 1 })
-          .eq("id", postId);
         if (post.userId !== state.currentUser.id) {
           const { error: err } = await supabase
             .from("notifications")
@@ -920,7 +956,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       repostedPosts: { ...state.repostedPosts, [postId]: !isReposted },
       posts: state.posts.map((p) =>
-        p.id === postId ? { ...p, reposts: Math.max(0, p.reposts + (isReposted ? -1 : 1)) } : p,
+        p.id === postId ? { ...p, reposts: Math.max(0, (p.reposts || 0) + (isReposted ? -1 : 1)) } : p,
       ),
     }));
 
@@ -930,19 +966,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         .delete()
         .eq("post_id", postId)
         .eq("user_id", state.currentUser.id);
-      await supabase
-        .from("posts")
-        .update({ reposts: Math.max(0, post.reposts - 1) })
-        .eq("id", postId);
     } else {
       const { error } = await supabase
         .from("reposts")
         .insert({ post_id: postId, user_id: state.currentUser.id });
       if (!error) {
-        await supabase
-          .from("posts")
-          .update({ reposts: post.reposts + 1 })
-          .eq("id", postId);
         // Create repost feed item
         await get().addPost({
           userId: state.currentUser.id,
@@ -979,9 +1007,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
     if (!state.currentUser) return;
     const isSaved = state.savedPosts[postId];
+    const post = state.posts.find(p => p.id === postId);
 
     set((state) => ({
       savedPosts: { ...state.savedPosts, [postId]: !isSaved },
+      posts: state.posts.map((p) =>
+        p.id === postId ? { ...p, saves: Math.max(0, (p.saves || 0) + (isSaved ? -1 : 1)) } : p
+      ),
     }));
 
     if (isSaved) {
@@ -1029,6 +1061,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  toggleCloseFriend: async (userId) => {
+    const state = get();
+    if (!state.currentUser) return;
+
+    const isCF = state.closeFriends?.[userId];
+    set((state) => ({
+      closeFriends: { ...(state.closeFriends || {}), [userId]: !isCF },
+    }));
+
+    if (isCF) {
+      await supabase
+        .from("close_friends")
+        .delete()
+        .eq("friend_id", userId)
+        .eq("user_id", state.currentUser.id);
+    } else {
+      await supabase
+        .from("close_friends")
+        .insert({ user_id: state.currentUser.id, friend_id: userId });
+    }
+  },
+
   fetchComments: async (postId) => {
     const { data } = await supabase
       .from("comments")
@@ -1069,15 +1123,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       .maybeSingle();
 
     if (!error && data) {
-      // Also increment post comments count
-      const post = state.posts.find((p) => p.id === postId);
-      if (post) {
-        await supabase
-          .from("posts")
-          .update({ comments: post.comments + 1 })
-          .eq("id", postId);
-      }
-
       const newComment: Comment = {
         id: data.id,
         postId: data.post_id,
@@ -1095,7 +1140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             [postId]: [...postComments, newComment],
           },
           posts: state.posts.map((p) =>
-            p.id === postId ? { ...p, comments: p.comments + 1 } : p,
+            p.id === postId ? { ...p, comments: Math.max(0, (p.comments || 0) + 1) } : p,
           ),
         };
       });
@@ -1123,13 +1168,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       comments: {
         ...state.comments,
         [postId]: state.comments[postId].map((c) =>
-          c.id === commentId ? { ...c, likes: c.likes + 1 } : c,
+          c.id === commentId ? { ...c, likes: Math.max(0, (c.likes || 0) + 1) } : c,
         ),
       },
     }));
     await supabase
       .from("comments")
-      .update({ likes: comment.likes + 1 })
+      .update({ likes: Math.max(0, (comment.likes || 0) + 1) })
       .eq("id", commentId);
   },
 
@@ -1224,12 +1269,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!error && data) {
       const reel = state.reels.find((r) => r.id === reelId);
-      if (reel) {
-        await supabase
-          .from("reels")
-          .update({ comments: reel.comments + 1 })
-          .eq("id", reelId);
-      }
 
       const newComment: Comment = {
         id: data.id,
@@ -1245,7 +1284,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return {
           comments: { ...state.comments, [reelId]: [...existing, newComment] },
           reels: state.reels.map((r) =>
-            r.id === reelId ? { ...r, comments: r.comments + 1 } : r,
+            r.id === reelId ? { ...r, comments: Math.max(0, (r.comments || 0) + 1) } : r,
           ),
         };
       });
@@ -1271,15 +1310,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         comments: { ...state.comments, [reelId]: existing.filter(c => c.id !== commentId) },
         reels: state.reels.map((r) =>
-            r.id === reelId ? { ...r, comments: Math.max(0, r.comments - 1) } : r,
+            r.id === reelId ? { ...r, comments: Math.max(0, (r.comments || 0) - 1) } : r,
         ),
       };
     });
-    
-    const reel = state.reels.find(r => r.id === reelId);
-    if (reel) {
-       await supabase.from("reels").update({ comments: Math.max(0, reel.comments - 1) }).eq("id", reelId);
-    }
   },
 
   addReel: async (payload) => {
@@ -1307,10 +1341,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         music: data.music,
         likes: data.likes || 0,
         comments: data.comments || 0,
+        reposts: data.reposts || 0,
+        views: data.views || 0,
+        saves: data.saves || 0,
         createdAt: data.created_at || new Date().toISOString(),
       };
       set((state) => ({ reels: [r, ...state.reels] }));
     }
+  },
+
+  viewPost: async (postId) => {
+    const post = get().posts.find(p => p.id === postId);
+    if (!post) return;
+    set((state) => ({
+      posts: state.posts.map((p) => p.id === postId ? { ...p, views: (p.views || 0) + 1 } : p)
+    }));
+  },
+
+  viewReel: async (reelId) => {
+    const reel = get().reels.find(r => r.id === reelId);
+    if (!reel) return;
+    set((state) => ({
+      reels: state.reels.map((r) => r.id === reelId ? { ...r, views: (r.views || 0) + 1 } : r)
+    }));
   },
 
   likeReel: async (reelId) => {
@@ -1323,7 +1376,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       likedReels: { ...state.likedReels, [reelId]: !isLiked },
       reels: state.reels.map((r) =>
-        r.id === reelId ? { ...r, likes: Math.max(0, r.likes + (isLiked ? -1 : 1)) } : r,
+        r.id === reelId ? { ...r, likes: Math.max(0, (r.likes || 0) + (isLiked ? -1 : 1)) } : r,
       ),
     }));
 
@@ -1338,19 +1391,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         .from("liked_reels")
         .insert({ reel_id: reelId, user_id: state.currentUser.id });
     }
-
-    await supabase
-      .from("reels")
-      .update({ likes: Math.max(0, reel.likes + (isLiked ? -1 : 1)) })
-      .eq("id", reelId);
   },
 
   toggleSaveReel: async (reelId) => {
     const state = get();
     if (!state.currentUser) return;
     const isSaved = state.savedReels[reelId];
+    const reel = state.reels.find((r) => r.id === reelId);
+
     set((state) => ({
       savedReels: { ...state.savedReels, [reelId]: !isSaved },
+      reels: state.reels.map((r) =>
+        r.id === reelId ? { ...r, saves: Math.max(0, (r.saves || 0) + (isSaved ? -1 : 1)) } : r
+      ),
     }));
 
     if (isSaved) {
@@ -1370,9 +1423,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
     if (!state.currentUser) return;
     const isReposted = state.repostedReels[reelId];
+    const reel = state.reels.find((r) => r.id === reelId);
     
     set((state) => ({
       repostedReels: { ...state.repostedReels, [reelId]: !isReposted },
+      reels: state.reels.map((r) =>
+        r.id === reelId ? { ...r, reposts: Math.max(0, (r.reposts || 0) + (isReposted ? -1 : 1)) } : r
+      ),
     }));
 
     if (isReposted) {
