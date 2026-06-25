@@ -12,6 +12,7 @@ import {
   MessageSquare,
   ChevronLeft,
   X,
+  Loader2,
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { uploadMedia } from "../lib/upload";
@@ -55,6 +56,12 @@ export function Messages() {
   const [groupName, setGroupName] = useState("");
   const [groupSelectedUsers, setGroupSelectedUsers] = useState<string[]>([]);
 
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [noteContent, setNoteContent] = useState("");
+  const [noteMusicTitle, setNoteMusicTitle] = useState("");
+  const [noteMusicUrl, setNoteMusicUrl] = useState("");
+  const [noteBgColor, setNoteBgColor] = useState("#2A2A35");
+
   useEffect(() => {
     fetchConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,6 +76,11 @@ export function Messages() {
   const activeMessages = activeConversationId
     ? messages[activeConversationId] || []
     : [];
+
+  useEffect(() => {
+    console.log("activeConversationId:", activeConversationId);
+    console.log("activeMessages count:", activeMessages.length);
+  }, [activeConversationId, activeMessages.length]);
 
   // Get active partner UI details for direct messages
   const activePartner = useMemo(() => {
@@ -100,11 +112,12 @@ export function Messages() {
 
   const [isUploading, setIsUploading] = useState(false);
 
-  const handleSend = async (overrideText?: string, image?: string, voice?: string) => {
+  const handleSend = async (overrideText?: string, mediaUrl?: string, audioUrl?: string) => {
     const textToSend = overrideText !== undefined ? overrideText : inputText.trim();
-    if ((!textToSend && !image && !voice) || !activeConversationId) return;
+    if ((!textToSend && !mediaUrl && !audioUrl) || !activeConversationId) return;
     try {
-      await sendMessage(activeConversationId, { content: textToSend, image, voice });
+      const messageType = audioUrl ? "audio" : mediaUrl ? "image" : "text";
+      await sendMessage(activeConversationId, { content: textToSend, mediaUrl, audioUrl, messageType });
       setInputText("");
     } catch (e: any) {
       console.error("Failed to send", e);
@@ -272,16 +285,7 @@ export function Messages() {
            <div className="flex gap-4 px-4">
               <div 
                  className="relative shrink-0 flex flex-col items-center gap-1 cursor-pointer"
-                 onClick={() => {
-                    const text = window.prompt("Share a thought (Note):");
-                    if (text) {
-                       addNote({
-                          content: text,
-                          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                          userId: currentUser.id
-                       });
-                    }
-                 }}
+                 onClick={() => setIsNoteModalOpen(true)}
               >
                   <div className="relative">
                      <img src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.id}`} className="w-14 h-14 rounded-full object-cover border border-white/20" />
@@ -298,8 +302,16 @@ export function Messages() {
                     <div key={note.id} className="relative shrink-0 flex flex-col items-center gap-1 cursor-pointer group">
                        <div className="relative">
                           <img src={author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${note.userId}`} className="w-14 h-14 rounded-full object-cover border border-white/20" />
-                          <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md text-white rounded-xl px-3 py-2 flex items-center justify-center text-xs shadow-lg shadow-black/50 border border-white/20 whitespace-normal max-w-[100px] text-center line-clamp-2 leading-tight z-10 w-max">
-                             {note.content}
+                          <div 
+                             className="absolute -top-4 left-1/2 -translate-x-1/2 backdrop-blur-md text-white rounded-xl px-3 py-2 flex flex-col items-center justify-center text-xs shadow-lg shadow-black/50 border border-white/20 whitespace-normal min-w-[70px] max-w-[150px] text-center z-10 w-max"
+                             style={{ backgroundColor: note.backgroundColor || 'rgba(0,0,0,0.8)' }}
+                          >
+                             <span className="line-clamp-2 leading-tight">{note.content}</span>
+                             {note.musicTitle && (
+                               <div className="mt-1 bg-black/40 px-1.5 py-0.5 rounded flex items-center gap-1 w-full overflow-hidden">
+                                 <span className="text-[8px] truncate block w-full">{note.musicTitle}</span>
+                               </div>
+                             )}
                           </div>
                        </div>
                        <span className="text-[10px] text-white/90 font-medium">{author?.username || 'user'}</span>
@@ -618,15 +630,17 @@ export function Messages() {
                         <div
                           className={`p-4 rounded-2xl md:rounded-3xl ${isMine ? "bg-indigo-600 rounded-br-sm" : "glass border border-white/10 rounded-bl-sm"} shadow-lg`}
                         >
-                          {msg.image && (
-                            <img src={msg.image} className="w-full max-w-sm rounded-xl mb-2 object-cover" alt="Attachment" />
+                          {msg.mediaUrl && (
+                            <img src={msg.mediaUrl} className="w-full max-w-sm rounded-xl mb-2 object-cover" alt="Attachment" />
                           )}
-                          {msg.voice && (
-                            <audio src={msg.voice} controls className="mb-2 max-w-[200px]" />
+                          {msg.audioUrl && (
+                            <audio src={msg.audioUrl} controls className="mb-2 max-w-[200px]" />
                           )}
-                          <p className="text-sm text-white/90 leading-relaxed break-words whitespace-pre-wrap">
-                            {msg.content}
-                          </p>
+                          {msg.content && msg.content.trim() !== "" && (
+                            <p className="text-sm text-white/90 leading-relaxed break-words whitespace-pre-wrap">
+                              {msg.content}
+                            </p>
+                          )}
                         </div>
                         <div
                           className={`flex items-center gap-2 text-[10px] text-white/30 font-mono ${isMine ? "justify-end" : "justify-start"}`}
@@ -638,7 +652,7 @@ export function Messages() {
                             <span className="flex items-center gap-0.5">
                               {msg.id.startsWith("temp-") ? (
                                 <span className="opacity-50">Sending...</span>
-                              ) : msg.read ? (
+                              ) : msg.seen ? (
                                 <span className="text-emerald-400">Seen</span>
                               ) : (
                                 <span>Sent</span>
@@ -816,6 +830,102 @@ export function Messages() {
                     Initialize Group
                  </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {isNoteModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-[#1A1A24] w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl border border-white/5"
+            >
+               <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                     <h2 className="text-xl font-bold tracking-tight text-white">Share a Note</h2>
+                     <button onClick={() => setIsNoteModalOpen(false)} className="text-white/40 hover:text-white p-2">
+                        <X size={20} />
+                     </button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                     <div>
+                        <label className="text-xs font-bold text-white/50 uppercase tracking-wider mb-2 block">What's on your mind?</label>
+                        <textarea
+                           value={noteContent}
+                           onChange={e => setNoteContent(e.target.value)}
+                           className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white placeholder:text-white/30 focus:outline-none focus:border-indigo-500/50 resize-none h-24"
+                           placeholder="Share a short thought..."
+                        />
+                     </div>
+                     
+                     <div className="flex gap-4">
+                        <div className="flex-1">
+                           <label className="text-xs font-bold text-white/50 uppercase tracking-wider mb-2 block">Music Title (Optional)</label>
+                           <input
+                              type="text"
+                              value={noteMusicTitle}
+                              onChange={e => setNoteMusicTitle(e.target.value)}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-indigo-500/50"
+                              placeholder="e.g. Lofi Chill"
+                           />
+                        </div>
+                        <div className="flex-1">
+                           <label className="text-xs font-bold text-white/50 uppercase tracking-wider mb-2 block">Music URL (Optional)</label>
+                           <input
+                              type="text"
+                              value={noteMusicUrl}
+                              onChange={e => setNoteMusicUrl(e.target.value)}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-indigo-500/50"
+                              placeholder="https://..."
+                           />
+                        </div>
+                     </div>
+                     
+                     <div>
+                        <label className="text-xs font-bold text-white/50 uppercase tracking-wider mb-2 block">Background Color</label>
+                        <div className="flex gap-2">
+                           {["#2A2A35", "#3B82F6", "#8B5CF6", "#EC4899", "#10B981", "#F59E0B"].map(color => (
+                              <button
+                                 key={color}
+                                 onClick={() => setNoteBgColor(color)}
+                                 className={`w-8 h-8 rounded-full border-2 transition-transform ${noteBgColor === color ? 'border-white scale-110' : 'border-transparent'}`}
+                                 style={{ backgroundColor: color }}
+                              />
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+                  
+                  <button 
+                     disabled={!noteContent.trim()}
+                     onClick={() => {
+                        addNote({
+                           content: noteContent.trim(),
+                           musicTitle: noteMusicTitle.trim() || undefined,
+                           musicUrl: noteMusicUrl.trim() || undefined,
+                           backgroundColor: noteBgColor,
+                           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                           userId: currentUser.id
+                        });
+                        setIsNoteModalOpen(false);
+                        setNoteContent("");
+                        setNoteMusicTitle("");
+                        setNoteMusicUrl("");
+                        setNoteBgColor("#2A2A35");
+                     }}
+                     className="w-full py-3 bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:bg-indigo-500 text-white font-bold tracking-widest rounded-xl transition-colors mt-6 uppercase text-sm"
+                  >
+                     Share Note
+                  </button>
+               </div>
             </motion.div>
           </motion.div>
         )}

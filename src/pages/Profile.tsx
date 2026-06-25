@@ -46,6 +46,7 @@ export function Profile() {
   );
   const toggleFollow = useAppStore((state) => state.toggleFollow);
   const following = useAppStore((state) => state.following);
+  const stories = useAppStore((state) => state.stories) || [];
   const closeFriends = useAppStore((state) => state.closeFriends || {});
   const toggleCloseFriend = useAppStore((state) => state.toggleCloseFriend);
 
@@ -80,7 +81,7 @@ export function Profile() {
        
        if (!followersRes.error) {
          setFollowerCount(followersRes.data.length);
-         setFollowersList(followersRes.data.map(d => ({
+         setFollowersList(followersRes.data.map((d: any) => ({
            id: d.profiles.id,
            email: d.profiles.email || "",
            username: d.profiles.username,
@@ -88,11 +89,11 @@ export function Profile() {
            avatar: d.profiles.avatar,
            bio: d.profiles.bio,
            website: d.profiles.website,
-         })) as User[]);
+         })) as unknown as User[]);
        }
        if (!followingRes.error) {
          setFollowingCount(followingRes.data.length);
-         setFollowingList(followingRes.data.map(d => ({
+         setFollowingList(followingRes.data.map((d: any) => ({
            id: d.profiles.id,
            email: d.profiles.email || "",
            username: d.profiles.username,
@@ -100,7 +101,7 @@ export function Profile() {
            avatar: d.profiles.avatar,
            bio: d.profiles.bio,
            website: d.profiles.website,
-         })) as User[]);
+         })) as unknown as User[]);
        }
     };
 
@@ -126,6 +127,7 @@ export function Profile() {
       setIsLoading(false);
       fetchPosts();
       fetchReels();
+      useAppStore.getState().fetchStories();
     };
     loadProfile();
   }, [username, currentUser, fetchProfileByUsername, fetchPosts, fetchReels]);
@@ -466,8 +468,12 @@ export function Profile() {
              <div className="relative shrink-0">
                <img
                  src={displayUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser.id}`}
+                 onClick={() => {
+                   const uStories = stories.filter(s => s.userId === displayUser.id);
+                   if (uStories.length > 0) navigate(`/story/${uStories[0].id}`);
+                 }}
                  alt="Avatar"
-                 className="w-32 h-32 md:w-40 md:h-40 rounded-3xl object-cover border-4 border-[var(--color-background)] bg-black"
+                 className={`w-32 h-32 md:w-40 md:h-40 rounded-3xl object-cover border-4 border-[var(--color-background)] bg-black ${stories.some((s) => s.userId === displayUser.id) ? 'border-indigo-400 p-1 cursor-pointer' : ''}`}
                />
                {displayUser.verified && (
                  <div className="absolute -bottom-2 -right-2 bg-indigo-500 w-10 h-10 rounded-xl flex items-center justify-center border-4 border-[var(--color-background)]">

@@ -53,6 +53,23 @@ export const PostCard = ({ post }: { post: any }) => {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [postMenuOpen, setPostMenuOpen] = useState<string | null>(null);
+  
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hasViewed = useRef(false);
+
+  useEffect(() => {
+    if (!cardRef.current || hasViewed.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        hasViewed.current = true;
+        useAppStore.getState().viewPost(post.id);
+        observer.disconnect();
+      }
+    }, { threshold: 0.5 });
+    
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [post.id]);
 
   const fetchComments =
     useAppStore((state) => state.fetchComments) || (async () => {});
@@ -106,7 +123,7 @@ export const PostCard = ({ post }: { post: any }) => {
   const authorUsername = authorToRender.username || "unknown";
 
   return (
-    <div className="feed-post flex flex-col gap-4 bg-[var(--color-nexa-dark)] border border-white/5 rounded-[24px] p-6 shadow-xl relative overflow-hidden">
+    <div ref={cardRef} className="feed-post flex flex-col gap-4 bg-[var(--color-nexa-dark)] border border-white/5 rounded-[24px] p-6 shadow-xl relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none" />
 
       {originalPost && (
@@ -277,17 +294,35 @@ export const PostCard = ({ post }: { post: any }) => {
       {/* Interactive Action Bar */}
       <div className="flex items-center justify-between mt-4 ml-15 pt-4 border-t border-white/5 relative z-10">
         <div className="flex items-center gap-6">
-          <button
-            onClick={() => likePost(postToRender.id)}
-            className={`flex items-center gap-2 transition-colors group ${likedPosts[postToRender.id] ? "text-rose-400" : "text-white/50 hover:text-rose-400"}`}
-          >
-            <Heart
-              size={18}
-              fill={likedPosts[postToRender.id] ? "currentColor" : "none"}
-              className="group-active:scale-75 transition-transform"
-            />
-            <span className="text-xs font-mono">{postToRender.likes}</span>
-          </button>
+          <div className="relative group/reaction">
+            <button
+              onClick={() => likePost(postToRender.id, likedPosts[postToRender.id] || "❤️")}
+              className={`flex items-center gap-2 transition-colors ${likedPosts[postToRender.id] ? "text-rose-400" : "text-white/50 hover:text-rose-400"}`}
+            >
+               {likedPosts[postToRender.id] ? (
+                 <span className="text-lg leading-none select-none">{likedPosts[postToRender.id]}</span>
+               ) : (
+                  <Heart
+                    size={18}
+                    className="active:scale-75 transition-transform"
+                  />
+               )}
+              <span className="text-xs font-mono">{postToRender.likes}</span>
+            </button>
+            <div className="absolute bottom-full left-0 mb-2 invisible opacity-0 group-hover/reaction:visible group-hover/reaction:opacity-100 transition-all duration-200">
+               <div className="flex bg-black/90 backdrop-blur-md rounded-full shadow-lg border border-white/10 p-1.5 gap-1">
+                  {["❤️", "😂", "😮", "😢", "🔥", "👏"].map(reaction => (
+                     <button 
+                        key={reaction}
+                        onClick={() => likePost(postToRender.id, reaction)}
+                        className="p-1 hover:scale-125 transition-transform origin-bottom cursor-pointer select-none"
+                     >
+                        {reaction}
+                     </button>
+                  ))}
+               </div>
+            </div>
+          </div>
           <button
             onClick={handleToggleComments}
             className={`flex items-center gap-2 transition-colors group ${showComments ? "text-indigo-400" : "text-white/50 hover:text-indigo-400"}`}

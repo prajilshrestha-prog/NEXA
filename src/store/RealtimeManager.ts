@@ -4,6 +4,7 @@ import { useAppStore } from "./useAppStore";
 class RealtimeManager {
   private mainChannel: ReturnType<typeof supabase.channel> | null = null;
   private unloadHandlerAdded = false;
+  private presenceInterval: any = null;
 
   initGlobalSubscriptions() {
     if (this.mainChannel) return;
@@ -85,11 +86,20 @@ class RealtimeManager {
             online_at: new Date().toISOString(),
           });
           
-          await supabase.from("user_presence").upsert({
-            user_id: userId,
-            status: "online",
-            last_seen: new Date().toISOString()
-          });
+          const updatePresence = async () => {
+            const currentUserId = useAppStore.getState().currentUser?.id;
+            if (!currentUserId) return;
+            await supabase.from("user_presence").upsert({
+              user_id: currentUserId,
+              status: "online",
+              last_seen: new Date().toISOString()
+            });
+          };
+
+          await updatePresence();
+
+          if (this.presenceInterval) clearInterval(this.presenceInterval);
+          this.presenceInterval = setInterval(updatePresence, 60000); // Heartbeat every 1 minute
         }
       }
       if (status === "CHANNEL_ERROR") {
@@ -148,6 +158,8 @@ class RealtimeManager {
               likes: newRec.likes || 0,
               comments: newRec.comments || 0,
               reposts: newRec.reposts || 0,
+              views: newRec.views || 0,
+              saves: newRec.saves || 0,
               createdAt: newRec.created_at,
             };
             useAppStore.setState((s) => {
@@ -176,7 +188,7 @@ class RealtimeManager {
               id: newRec.id,
               postId: newRec.post_id,
               userId: newRec.user_id,
-              content: newRec.content,
+              content: newRec.text || newRec.content,
               likes: newRec.likes || 0,
               createdAt: newRec.created_at,
             };
@@ -206,6 +218,9 @@ class RealtimeManager {
               music: newRec.music,
               likes: newRec.likes || 0,
               comments: newRec.comments || 0,
+              reposts: newRec.reposts || 0,
+              views: newRec.views || 0,
+              saves: newRec.saves || 0,
               createdAt: newRec.created_at,
             };
             useAppStore.setState((s) => {
@@ -319,10 +334,12 @@ class RealtimeManager {
                 conversationId: newRec.conversation_id,
                 senderId: newRec.sender_id,
                 content: newRec.content || "",
-                image: newRec.image,
-                voice: newRec.voice,
+                messageType: newRec.message_type,
+                mediaUrl: newRec.media_url,
+                audioUrl: newRec.audio_url,
                 createdAt: newRec.created_at,
-                read: newRec.read || false,
+                seen: newRec.seen || false,
+                seenAt: newRec.seen_at,
               };
               useAppStore.getState().fetchProfiles([newRec.sender_id]);
               m.useCommunicationStore.setState((s) => {
@@ -364,18 +381,30 @@ class RealtimeManager {
         if (event === "UPDATE") {
            import("./communicationStore").then((m) => {
               m.useCommunicationStore.setState((s) => {
-                 const existing = s.messages[newRec.conversation_id] || [];
+                 let foundConvId: string | null = null;
+                 for (const [convId, msgs] of Object.entries(s.messages)) {
+                    if (msgs.some(msg => msg.id === newRec.id)) {
+                       foundConvId = convId;
+                       break;
+                    }
+                 }
+                 const targetConvId = newRec.conversation_id || foundConvId;
+                 if (!targetConvId) return s;
+
+                 const existing = s.messages[targetConvId] || [];
                  const updated = existing.map(msg => msg.id === newRec.id ? {
                      ...msg,
-                     read: newRec.read !== undefined ? newRec.read : msg.read,
+                     seen: newRec.seen !== undefined ? newRec.seen : msg.seen,
+                     seenAt: newRec.seen_at !== undefined ? newRec.seen_at : msg.seenAt,
                      content: newRec.content || msg.content,
-                     image: newRec.image !== undefined ? newRec.image : msg.image,
-                     voice: newRec.voice !== undefined ? newRec.voice : msg.voice
+                     mediaUrl: newRec.media_url !== undefined ? newRec.media_url : msg.mediaUrl,
+                     audioUrl: newRec.audio_url !== undefined ? newRec.audio_url : msg.audioUrl,
+                     messageType: newRec.message_type !== undefined ? newRec.message_type : msg.messageType
                  } : msg);
                  return {
                     messages: {
                        ...s.messages,
-                       [newRec.conversation_id]: updated
+                       [targetConvId]: updated
                     }
                  };
               });
@@ -430,6 +459,7 @@ class RealtimeManager {
               musicTitle: newRec.music_title,
               musicUrl: newRec.music_url,
               gifUrl: newRec.gif_url,
+              backgroundColor: newRec.background_color,
               expiresAt: newRec.expires_at,
               createdAt: newRec.created_at,
             };
@@ -483,6 +513,10 @@ class RealtimeManager {
   }
 
   cleanup() {
+    if (this.presenceInterval) {
+      clearInterval(this.presenceInterval);
+      this.presenceInterval = null;
+    }
     if (this.mainChannel) {
       supabase.removeChannel(this.mainChannel);
       this.mainChannel = null;

@@ -88,7 +88,7 @@ create table public.comments (
   id uuid default gen_random_uuid() primary key,
   post_id uuid references public.posts(id) on delete cascade not null,
   user_id uuid references public.profiles(id) on delete cascade not null,
-  content text not null,
+  text text not null,
   likes integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
@@ -114,7 +114,7 @@ create table public.reel_comments (
   id uuid default gen_random_uuid() primary key,
   reel_id uuid references public.reels(id) on delete cascade not null,
   user_id uuid references public.profiles(id) on delete cascade not null,
-  content text not null,
+  text text not null,
   likes integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
@@ -198,9 +198,11 @@ create table public.messages (
   conversation_id uuid references public.conversations(id) on delete cascade not null,
   sender_id uuid references public.profiles(id) on delete cascade not null,
   content text,
-  image text,
-  voice text,
-  read boolean default false,
+  message_type text default 'text',
+  media_url text,
+  audio_url text,
+  seen boolean default false,
+  seen_at timestamp with time zone,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 

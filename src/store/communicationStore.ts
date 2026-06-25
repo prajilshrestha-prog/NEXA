@@ -22,10 +22,12 @@ export interface Message {
   conversationId: string;
   senderId: string;
   content: string;
-  image?: string;
-  voice?: string;
+  messageType?: string;
+  mediaUrl?: string;
+  audioUrl?: string;
   createdAt: string;
-  read: boolean;
+  seen: boolean;
+  seenAt?: string;
 }
 
 interface CommunicationState {
@@ -69,7 +71,7 @@ interface CommunicationState {
   setActiveConversation: (conversationId: string) => void;
 
   fetchMessages: (conversationId: string) => Promise<void>;
-  sendMessage: (conversationId: string, payload: { content?: string, image?: string, voice?: string }) => Promise<void>;
+  sendMessage: (conversationId: string, payload: { content?: string, messageType?: string, mediaUrl?: string, audioUrl?: string }) => Promise<void>;
   markAsRead: (conversationId: string) => Promise<void>;
 
   setTyping: (conversationId: string, isTyping: boolean) => void;
@@ -98,6 +100,9 @@ interface CommunicationState {
   ) => void;
   handleCallAccepted: (sessionId: string, partnerId: string) => void;
   handleCallEnded: (sessionId: string) => void;
+
+  callLogs: any[];
+  fetchCallLogs: () => Promise<void>;
 }
 
 export const useCommunicationStore = create<CommunicationState>((set, get) => ({
@@ -233,11 +238,15 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
               conversationId: m.conversation_id,
               senderId: m.sender_id,
               content: m.content,
+              messageType: m.message_type,
+              mediaUrl: m.media_url,
+              audioUrl: m.audio_url,
               createdAt: m.created_at,
-              read: m.read || false, // we might need 'message_reads' table, but fallback to read column if present
+              seen: m.seen || false,
+              seenAt: m.seen_at,
             });
-            // Calculate unread (if other sent it and not read)
-            if (m.sender_id !== userId && !m.read) {
+            // Calculate unread (if other sent it and not seen)
+            if (m.sender_id !== userId && !m.seen) {
               unreads[m.conversation_id] =
                 (unreads[m.conversation_id] || 0) + 1;
             }
@@ -356,12 +365,16 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
   },
 
   fetchMessages: async (conversationId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
       .limit(100);
+
+    if (error) {
+      console.error("fetchMessages error:", error);
+    }
 
     if (data) {
       const mapped = data.map((m) => ({
@@ -369,10 +382,12 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
         conversationId: m.conversation_id,
         senderId: m.sender_id,
         content: m.content || "",
-        image: m.image,
-        voice: m.voice,
+        messageType: m.message_type,
+        mediaUrl: m.media_url,
+        audioUrl: m.audio_url,
         createdAt: m.created_at,
-        read: m.read || false,
+        seen: m.seen || false,
+        seenAt: m.seen_at,
       }));
       set((s) => ({ messages: { ...s.messages, [conversationId]: mapped } }));
     }
@@ -389,10 +404,11 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       conversationId,
       senderId: userId,
       content: payload.content || "",
-      image: payload.image,
-      voice: payload.voice,
+      messageType: payload.messageType || "text",
+      mediaUrl: payload.mediaUrl,
+      audioUrl: payload.audioUrl,
       createdAt: new Date().toISOString(),
-      read: false,
+      seen: false,
     };
 
     set((s) => ({
@@ -402,11 +418,13 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       },
     }));
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("messages")
-      .insert({ conversation_id: conversationId, sender_id: userId, content: payload.content, image: payload.image, voice: payload.voice })
+      .insert({ conversation_id: conversationId, sender_id: userId, content: payload.content, message_type: payload.messageType || 'text', media_url: payload.mediaUrl, audio_url: payload.audioUrl })
       .select()
       .maybeSingle();
+      
+    if (error) console.error("Message Insert Error", error);
 
     if (data) {
       set((s) => {
@@ -440,18 +458,17 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       messages: {
         ...s.messages,
         [conversationId]: (s.messages[conversationId] || []).map((m) =>
-          m.senderId !== userId && !m.read ? { ...m, read: true } : m,
+          m.senderId !== userId && !m.seen ? { ...m, seen: true, seenAt: new Date().toISOString() } : m,
         ),
       },
     }));
 
-    // Update in DB (using message_reads logic, or fallback to simple update if we just use 'read' column)
     await supabase
       .from("messages")
-      .update({ read: true })
+      .update({ seen: true, seen_at: new Date().toISOString() })
       .eq("conversation_id", conversationId)
       .neq("sender_id", userId)
-      .eq("read", false);
+      .eq("seen", false);
   },
 
   setTyping: (conversationId: string, isTyping: boolean) => {
@@ -700,6 +717,34 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     if (!currentCall.sessionId) return;
     if (!sessionId || currentCall.sessionId === sessionId) {
       get().endCall();
+    }
+  },
+
+  callLogs: [],
+  fetchCallLogs: async () => {
+    const userId = useAppStore.getState().currentUser?.id;
+    if (!userId) return;
+
+    const { data: convs } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", userId);
+
+    if (!convs || convs.length === 0) {
+      set({ callLogs: [] });
+      return;
+    }
+
+    const convIds = convs.map(c => c.conversation_id);
+
+    const { data: sessions } = await supabase
+      .from("call_sessions")
+      .select("*")
+      .in("conversation_id", convIds)
+      .order("created_at", { ascending: false });
+
+    if (sessions) {
+      set({ callLogs: sessions });
     }
   },
 }));

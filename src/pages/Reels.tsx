@@ -67,11 +67,17 @@ export function Reels() {
     fetchReels();
   }, [fetchReels]);
 
+  const viewedReels = useRef<Set<string>>(new Set());
+
   useEffect(() => {
      if (reels.length > 0 && reels[activeIndex]) {
-        useAppStore.getState().viewReel(reels[activeIndex].id);
+        const reelId = reels[activeIndex].id;
+        if (!viewedReels.current.has(reelId)) {
+          viewedReels.current.add(reelId);
+          useAppStore.getState().viewReel(reelId);
+        }
      }
-  }, [activeIndex, reels.length]);
+  }, [activeIndex, reels]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -234,21 +240,40 @@ export function Reels() {
                   </div>
 
                   {/* Right Actions */}
-                  <div className="flex flex-col gap-6 items-center pointer-events-auto mb-4 relative">
-                    <button
-                      onClick={() => likeReel(reel.id)}
-                      className="flex flex-col items-center gap-1 group"
-                    >
-                      <div className={`p-3 rounded-full backdrop-blur-md border transition-colors ${likedReels[reel.id] ? "bg-rose-500/20 border-rose-500/50" : "bg-black/40 border-white/10 group-hover:bg-rose-500/20"}`}>
-                        <Heart
-                          size={24}
-                          className={likedReels[reel.id] ? "text-rose-500 fill-rose-500" : "text-white group-hover:text-rose-400"}
-                        />
-                      </div>
-                      <span className="text-xs text-white font-bold">
-                        {reel.likes > 0 ? reel.likes : "Like"}
-                      </span>
-                    </button>
+                  <div className="flex flex-col gap-6 items-center pointer-events-auto mb-4 relative z-50">
+                    <div className="relative group/reaction">
+                       <button
+                         onClick={() => likeReel(reel.id, likedReels[reel.id] || "❤️")}
+                         className="flex flex-col items-center gap-1 group"
+                       >
+                         <div className={`p-3 rounded-full backdrop-blur-md border transition-colors ${likedReels[reel.id] ? "bg-black/40 border-white/10" : "bg-black/40 border-white/10 group-hover:bg-rose-500/20"}`}>
+                           {likedReels[reel.id] ? (
+                              <span className="text-2xl leading-none select-none">{likedReels[reel.id]}</span>
+                           ) : (
+                              <Heart
+                                size={24}
+                                className="text-white group-hover:text-rose-400"
+                              />
+                           )}
+                         </div>
+                         <span className="text-xs text-white font-bold drop-shadow-md">
+                           {reel.likes > 0 ? reel.likes : "Like"}
+                         </span>
+                       </button>
+                       <div className="absolute right-[110%] top-0 mr-4 invisible opacity-0 group-hover/reaction:visible group-hover/reaction:opacity-100 transition-all duration-200">
+                          <div className="flex flex-col-reverse bg-black/90 backdrop-blur-md rounded-full shadow-lg border border-white/10 p-1.5 gap-2">
+                             {["❤️", "😂", "😮", "😢", "🔥", "👏"].map(reaction => (
+                                <button 
+                                   key={reaction}
+                                   onClick={() => likeReel(reel.id, reaction)}
+                                   className="p-2 text-2xl hover:scale-125 transition-transform origin-right cursor-pointer select-none"
+                                >
+                                   {reaction}
+                                </button>
+                             ))}
+                          </div>
+                       </div>
+                    </div>
                     
                     <button onClick={() => handleOpenComments(reel.id)} className="flex flex-col items-center gap-1 group">
                       <div className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/10 group-hover:bg-indigo-500/20 transition-colors">
